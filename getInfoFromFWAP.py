@@ -16,13 +16,13 @@ def main(fwap_file="files/FWAP.xml", ep="", rds="", servername=""):
 
     xpath_string = '/FWAP/Environnement'
     if ep:
-        xpath_string += "[@EP={ep}]".format(ep=ep)
+        xpath_string += '[@EP="{ep}"]'.format(ep=ep)
     xpath_string += "/RoleServeur"
     if rds:
-        xpath_string += "[@RDS={rds}]".format(rds=rds)
+        xpath_string += '[@RDS="{rds}"]'.format(rds=rds)
     xpath_string += "/Cluster/MachineVirtuelle"
     if servername:
-        xpath_string += "[@SERVERNAME={servername}]".format(servername=servername)
+        xpath_string += '[@SERVERNAME="{servername}"]'.format(servername=servername)
     r = tree.xpath(xpath_string)
 
     # Correspondance Image DVD/OS
