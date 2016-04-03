@@ -1,2 +1,2 @@
 # fwap
-custom XML management for python
+custom XML management for AGORA written in python
