@@ -26,10 +26,10 @@ def get_args():
     """
     parser = ArgumentParser(description='Arguments for talking to vCenter')
 
-    parser.add_argument('-s', '--host',
+    parser.add_argument('-s', '--vcenter',
                         required=True,
                         action='store',
-                        help='vSphere service to connect to.')
+                        help='vCenter to connect to.')
 
     parser.add_argument('-o', '--port',
                         type=int,
@@ -83,6 +83,18 @@ def get_args():
                         default=None,
                         help='Path of the OVF file to deploy.')
 
+    parser.add_argument('-n', '--name',
+                        required=True,
+                        action='store',
+                        default=None,
+                        help='Name of the new VM.')
+
+    parser.add_argument('-e', '--esxi',
+                        required=True,
+                        action='store',
+                        help='ESXi to deploy to.')
+
+
     args = parser.parse_args()
 
     if not args.password:
@@ -105,6 +117,18 @@ def get_ovf_descriptor(ovf_path):
                 print("Could not read file: %s" % ovf_path)
                 exit(1)
 
+
+def get_obj(content, vimtype, name):
+    """
+    Get the vsphere object associated with a given text name
+    """
+    obj = None
+    container = content.viewManager.CreateContainerView(content.rootFolder, vimtype, True)
+    for c in container.view:
+        if c.name == name:
+            obj = c
+            break
+    return obj
 
 def get_obj_in_list(obj_name, obj_list):
     """
@@ -180,7 +204,7 @@ def main():
     context = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
     context.verify_mode = ssl.CERT_NONE
     try:
-        si = connect.SmartConnect(host=args.host,
+        si = connect.SmartConnect(host=args.vcenter,
                                   user=args.user,
                                   pwd=args.password,
                                   port=args.port,
@@ -194,20 +218,19 @@ def main():
     # On crée l'OVFManager
     manager = si.content.ovfManager
     # On crée l'objet importSpecParams contenant les détails de l'import
-    spec_params = vim.OvfManager.CreateImportSpecParams()
+    spec_params = vim.OvfManager.CreateImportSpecParams(entityName="a82flr02")
     # On crée l'objet représentant l'import : import_spec
     import_spec = manager.CreateImportSpec(ovfd,
                                            objs["resource pool"],
                                            objs["datastore"],
                                            spec_params)
     # On lance l'import OVF dans le resource Pool choisi en paramètre
-    lease = objs["resource pool"].ImportVApp(import_spec.importSpec)
+    chosen_host = get_obj(si.content, vim.HostSystem, args.esxi)
+    chosen_folder = get_obj(si.content, vim.Folder, "_Autres")
+    lease = objs["resource pool"].ImportVApp(import_spec.importSpec, folder=chosen_folder, host=chosen_host)
     msg = {str}
-    # 'Ligne 81 : Valeur \\'LAN Data\\' non valide pour l’élément \\' Connection\\'.'
-    # name = {str}
-    # 'Connection'
-    # value = {str}
-    # 'LAN Data'
+    keepalive_thread = Thread(target=keep_lease_alive, args=(lease,))
+    keepalive_thread.start()
 
     while True:
         # On attend que le système soit prêt à recevoir
@@ -215,7 +238,7 @@ def main():
             # Assuming single VMDK.
             # TODO A modifier pour lire tous les fichiers à uploader
             # Ici url correspond à l'URL du premier device à uploader
-            url = lease.info.deviceUrl[0].url.replace('*', args.host)
+            url = lease.info.deviceUrl[0].url.replace('*', args.vcenter)
             # Spawn a dawmon thread to keep the lease active while POSTing
             # VMDK.
             keepalive_thread = Thread(target=keep_lease_alive, args=(lease,))
@@ -223,8 +246,7 @@ def main():
             # POST the VMDK to the host via curl on the retrieved url. Requests library would work
             # too.
             curl_cmd = (
-                "curl -Ss -X POST --insecure -T %s -H 'Content-Type: \
-                application/x-vnd.vmware-streamVmdk' %s" %
+                "curl -Ss -X POST --insecure -T %s -H 'Content-Type:application/x-vnd.vmware-streamVmdk' %s" %
                 (args.vmdk_path, url))
             system(curl_cmd)
             lease.HttpNfcLeaseComplete()
