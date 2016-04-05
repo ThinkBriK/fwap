@@ -8,8 +8,6 @@
 
  Script to deploy VM via a single .ovf and a single .vmdk file.
 """
-import glob
-import os.path
 import ssl
 from argparse import ArgumentParser
 from getpass import getpass
@@ -204,7 +202,6 @@ class vmDeploy(object):
                  cluster_name, esx_host, vm_folder):
         self.vm_name = vm_name
         self.ovf_descriptor = get_ovf_descriptor(ovf_path)
-        self.vmdks = glob.glob(os.path.dirname(ovf_path) + '\*.vmdk')
         self.nb_cpu = nb_cpu
         self.ram_ko = ram_ko
         self.wanted_lan_name = lan
@@ -258,21 +255,22 @@ class vmDeploy(object):
         while True:
             # On attend que le système soit prêt à recevoir
             if lease.state == vim.HttpNfcLease.State.ready:
-                # Assuming single VMDK.
-                # TODO A modifier pour lire tous les fichiers à uploader
-                # Ici url correspond à l'URL du premier device à uploader
-                url = lease.info.deviceUrl[0].url.replace('*', self.vcenter)
                 # Spawn a dawmon thread to keep the lease active while POSTing
                 # VMDK.
                 keepalive_thread = Thread(target=keep_lease_alive, args=(lease,))
                 keepalive_thread.start()
-                # TODO Faire correspondre la liste des VMDKs aux urls sur lesquelles télécharger : facile c'est import_spec.fileItem[<id correspondant à celui de lease.info.deviceUrl]
+
                 # POST the VMDK to the host via curl on the retrieved url. Requests library would work
                 # too.
-                for vmdk in self.vmdks:
+                for disk in import_spec.fileItem:
+                    for devurl in lease.info.deviceUrl:
+                        # TODO : Vérifier que ce ne soit pas devurl.importKey
+                        if devurl.key == disk.deviceId:
+                            url = devurl.url.replace('*', self.vcenter)
+                            break
                     curl_cmd = (
                         "curl -Ss -X POST --insecure -T %s -H 'Content-Type:application/x-vnd.vmware-streamVmdk' %s" %
-                        (vmdk, url))
+                        (disk.path, url))
                     system(curl_cmd)
                 lease.HttpNfcLeaseComplete()
                 keepalive_thread.join()
