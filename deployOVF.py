@@ -196,6 +196,74 @@ def keep_lease_alive(lease):
             return
 
 
+class vmDeploy(object):
+    def connect_vcenter(self, vcenter, user, password, port=443):
+        # Disabling SSL certificate verification
+        context = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
+        context.verify_mode = ssl.CERT_NONE
+        try:
+            service_instance = connect.SmartConnect(host=vcenter,
+                                                    user=user,
+                                                    pwd=password,
+                                                    port=port,
+                                                    sslContext=context,
+                                                    )
+        except:
+            print("Unable to connect to %s" % vcenter)
+            exit(1)
+        return service_instance
+
+    def params(self, nom, nb_cpu, ram_ko, vswitch, ):
+        spec_params = vim.OvfManager.CreateImportSpecParams(entityName=nom)
+
+    def deploy(self, si, ovf_path, esx, folder):
+        # On crée le pointeur vers le fichier OVF
+        ovfd = get_ovf_descriptor(ovf_path)
+        # On prépare la configuration de l'import à partir des arguments
+        objs = get_objects(si, args)
+        # On crée l'OVFManager
+        manager = si.content.ovfManager
+        # On crée l'objet importSpecParams contenant les détails de l'import
+
+        # On crée l'objet représentant l'import : import_spec
+        import_spec = manager.CreateImportSpec(ovfd,
+                                               objs["resource pool"],
+                                               objs["datastore"],
+                                               spec_params)
+        # On lance l'import OVF dans le resource Pool choisi en paramètre
+        chosen_host = get_obj(si.content, vim.HostSystem, args.esxi)
+        chosen_folder = get_obj(si.content, vim.Folder, "_Autres")
+        lease = objs["resource pool"].ImportVApp(import_spec.importSpec, folder=chosen_folder, host=chosen_host)
+        msg = {str}
+        keepalive_thread = Thread(target=keep_lease_alive, args=(lease,))
+        keepalive_thread.start()
+
+        while True:
+            # On attend que le système soit prêt à recevoir
+            if lease.state == vim.HttpNfcLease.State.ready:
+                # Assuming single VMDK.
+                # TODO A modifier pour lire tous les fichiers à uploader
+                # Ici url correspond à l'URL du premier device à uploader
+                url = lease.info.deviceUrl[0].url.replace('*', args.vcenter)
+                # Spawn a dawmon thread to keep the lease active while POSTing
+                # VMDK.
+                keepalive_thread = Thread(target=keep_lease_alive, args=(lease,))
+                keepalive_thread.start()
+                # POST the VMDK to the host via curl on the retrieved url. Requests library would work
+                # too.
+                curl_cmd = (
+                    "curl -Ss -X POST --insecure -T %s -H 'Content-Type:application/x-vnd.vmware-streamVmdk' %s" %
+                    (args.vmdk_path, url))
+                system(curl_cmd)
+                lease.HttpNfcLeaseComplete()
+                keepalive_thread.join()
+                return 0
+            elif lease.state == vim.HttpNfcLease.State.error:
+                print("Lease error: " + lease.state.error)
+                exit(1)
+        connect.Disconnect(si)
+
+
 def main():
     args = get_args()
     # On crée le pointeur vers le fichier OVF
