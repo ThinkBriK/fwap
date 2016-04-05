@@ -8,6 +8,8 @@
 
  Script to deploy VM via a single .ovf and a single .vmdk file.
 """
+import glob
+import os.path
 import ssl
 from argparse import ArgumentParser
 from getpass import getpass
@@ -78,6 +80,7 @@ def get_args():
                         help='Path of the VMDK file to deploy.')
 
     parser.add_argument('-f', '--ovf_path',
+                        dest='ovf_path',
                         required=True,
                         action='store',
                         default=None,
@@ -93,7 +96,6 @@ def get_args():
                         required=True,
                         action='store',
                         help='ESXi to deploy to.')
-
 
     args = parser.parse_args()
 
@@ -130,6 +132,7 @@ def get_obj(content, vimtype, name):
             break
     return obj
 
+
 def get_obj_in_list(obj_name, obj_list):
     """
     Gets an object out of a list (obj_list) whos name matches obj_name.
@@ -148,15 +151,15 @@ def get_objects(si, args):
     """
     # Get datacenter object.
     datacenter_list = si.content.rootFolder.childEntity
-    if args.datacenter_name:
-        datacenter_obj = get_obj_in_list(args.datacenter_name, datacenter_list)
+    if args['datacenter_name']:
+        datacenter_obj = get_obj_in_list(args['datacenter_name'], datacenter_list)
     else:
         datacenter_obj = datacenter_list[0]
 
     # Get datastore object.
     datastore_list = datacenter_obj.datastoreFolder.childEntity
-    if args.datastore_name:
-        datastore_obj = get_obj_in_list(args.datastore_name, datastore_list)
+    if args['datastore_name']:
+        datastore_obj = get_obj_in_list(args['datastore_name'], datastore_list)
     elif len(datastore_list) > 0:
         datastore_obj = datastore_list[0]
     else:
@@ -164,8 +167,8 @@ def get_objects(si, args):
 
     # Get cluster object.
     cluster_list = datacenter_obj.hostFolder.childEntity
-    if args.cluster_name:
-        cluster_obj = get_obj_in_list(args.cluster_name, cluster_list)
+    if args['cluster_name']:
+        cluster_obj = get_obj_in_list(args['cluster_name'], cluster_list)
     elif len(cluster_list) > 0:
         cluster_obj = cluster_list[0]
     else:
@@ -197,7 +200,24 @@ def keep_lease_alive(lease):
 
 
 class vmDeploy(object):
+    def __init__(self, ovf_path, vm_name, nb_cpu, ram_ko, lan, datacenter_name, datastore_name,
+                 cluster_name, esx_host, vm_folder):
+        self.vm_name = vm_name
+        self.ovf_descriptor = get_ovf_descriptor(ovf_path)
+        self.vmdks = glob.glob(os.path.dirname(ovf_path) + '\*.vmdk')
+        self.nb_cpu = nb_cpu
+        self.ram_ko = ram_ko
+        self.wanted_lan_name = lan
+        self.ovf_lan = lan
+        self.ovf_manager = None
+        self.datacenter_name = datacenter_name
+        self.datastore_name = datastore_name
+        self.cluster_name = cluster_name
+        self.esx_host = esx_host
+        self.vm_folder = vm_folder
+
     def connect_vcenter(self, vcenter, user, password, port=443):
+        self.vcenter = vcenter
         # Disabling SSL certificate verification
         context = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
         context.verify_mode = ssl.CERT_NONE
@@ -213,27 +233,24 @@ class vmDeploy(object):
             exit(1)
         return service_instance
 
-    def params(self, nom, nb_cpu, ram_ko, vswitch, ):
-        spec_params = vim.OvfManager.CreateImportSpecParams(entityName=nom)
-
-    def deploy(self, si, ovf_path, esx, folder):
-        # On crée le pointeur vers le fichier OVF
-        ovfd = get_ovf_descriptor(ovf_path)
+    def deploy(self, si):
+        self.ovf_manager = si.content.ovfManager
+        ovf_object = self.ovf_manager.ParseDescriptor(self.ovf_descriptor, vim.OvfManager.ParseDescriptorParams())
+        self.ovf_lan_name = ovf_object.network[0].name
+        wanted_lan = get_obj(si.content, vim.Network, self.wanted_lan_name)
+        spec_params = vim.OvfManager.CreateImportSpecParams(entityName=self.vm_name)
         # On prépare la configuration de l'import à partir des arguments
-        objs = get_objects(si, args)
-        # On crée l'OVFManager
-        manager = si.content.ovfManager
-        # On crée l'objet importSpecParams contenant les détails de l'import
-
+        objs = get_objects(si, self.__dict__)
         # On crée l'objet représentant l'import : import_spec
-        import_spec = manager.CreateImportSpec(ovfd,
-                                               objs["resource pool"],
-                                               objs["datastore"],
-                                               spec_params)
+        import_spec = self.ovf_manager.CreateImportSpec(self.ovf_descriptor,
+                                                        objs["resource pool"],
+                                                        objs["datastore"],
+                                                        spec_params)
         # On lance l'import OVF dans le resource Pool choisi en paramètre
-        chosen_host = get_obj(si.content, vim.HostSystem, args.esxi)
-        chosen_folder = get_obj(si.content, vim.Folder, "_Autres")
+        chosen_host = get_obj(si.content, vim.HostSystem, self.esx_host)
+        chosen_folder = get_obj(si.content, vim.Folder, self.vm_folder)
         lease = objs["resource pool"].ImportVApp(import_spec.importSpec, folder=chosen_folder, host=chosen_host)
+
         msg = {str}
         keepalive_thread = Thread(target=keep_lease_alive, args=(lease,))
         keepalive_thread.start()
@@ -244,17 +261,19 @@ class vmDeploy(object):
                 # Assuming single VMDK.
                 # TODO A modifier pour lire tous les fichiers à uploader
                 # Ici url correspond à l'URL du premier device à uploader
-                url = lease.info.deviceUrl[0].url.replace('*', args.vcenter)
+                url = lease.info.deviceUrl[0].url.replace('*', self.vcenter)
                 # Spawn a dawmon thread to keep the lease active while POSTing
                 # VMDK.
                 keepalive_thread = Thread(target=keep_lease_alive, args=(lease,))
                 keepalive_thread.start()
+                # TODO Faire correspondre la liste des VMDKs aux urls sur lesquelles télécharger : facile c'est import_spec.fileItem[<id correspondant à celui de lease.info.deviceUrl]
                 # POST the VMDK to the host via curl on the retrieved url. Requests library would work
                 # too.
-                curl_cmd = (
-                    "curl -Ss -X POST --insecure -T %s -H 'Content-Type:application/x-vnd.vmware-streamVmdk' %s" %
-                    (args.vmdk_path, url))
-                system(curl_cmd)
+                for vmdk in self.vmdks:
+                    curl_cmd = (
+                        "curl -Ss -X POST --insecure -T %s -H 'Content-Type:application/x-vnd.vmware-streamVmdk' %s" %
+                        (vmdk, url))
+                    system(curl_cmd)
                 lease.HttpNfcLeaseComplete()
                 keepalive_thread.join()
                 return 0
@@ -265,65 +284,21 @@ class vmDeploy(object):
 
 
 def main():
-    args = get_args()
-    # On crée le pointeur vers le fichier OVF
-    ovfd = get_ovf_descriptor(args.ovf_path)
-    # Disabling SSL certificate verification
-    context = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
-    context.verify_mode = ssl.CERT_NONE
-    try:
-        si = connect.SmartConnect(host=args.vcenter,
-                                  user=args.user,
-                                  pwd=args.password,
-                                  port=args.port,
-                                  sslContext=context,
-                                  )
-    except:
-        print("Unable to connect to %s" % args.host)
-        exit(1)
-    # On prépare la configuration de l'import à partir des arguments
-    objs = get_objects(si, args)
-    # On crée l'OVFManager
-    manager = si.content.ovfManager
-    # On crée l'objet importSpecParams contenant les détails de l'import
-    spec_params = vim.OvfManager.CreateImportSpecParams(entityName="a82flr02")
-    # On crée l'objet représentant l'import : import_spec
-    import_spec = manager.CreateImportSpec(ovfd,
-                                           objs["resource pool"],
-                                           objs["datastore"],
-                                           spec_params)
-    # On lance l'import OVF dans le resource Pool choisi en paramètre
-    chosen_host = get_obj(si.content, vim.HostSystem, args.esxi)
-    chosen_folder = get_obj(si.content, vim.Folder, "_Autres")
-    lease = objs["resource pool"].ImportVApp(import_spec.importSpec, folder=chosen_folder, host=chosen_host)
-    msg = {str}
-    keepalive_thread = Thread(target=keep_lease_alive, args=(lease,))
-    keepalive_thread.start()
+    # args = get_args()
+    # TODO a remplacer par args une fois le programme fonctionnel
 
-    while True:
-        # On attend que le système soit prêt à recevoir
-        if lease.state == vim.HttpNfcLease.State.ready:
-            # Assuming single VMDK.
-            # TODO A modifier pour lire tous les fichiers à uploader
-            # Ici url correspond à l'URL du premier device à uploader
-            url = lease.info.deviceUrl[0].url.replace('*', args.vcenter)
-            # Spawn a dawmon thread to keep the lease active while POSTing
-            # VMDK.
-            keepalive_thread = Thread(target=keep_lease_alive, args=(lease,))
-            keepalive_thread.start()
-            # POST the VMDK to the host via curl on the retrieved url. Requests library would work
-            # too.
-            curl_cmd = (
-                "curl -Ss -X POST --insecure -T %s -H 'Content-Type:application/x-vnd.vmware-streamVmdk' %s" %
-                (args.vmdk_path, url))
-            system(curl_cmd)
-            lease.HttpNfcLeaseComplete()
-            keepalive_thread.join()
-            return 0
-        elif lease.state == vim.HttpNfcLease.State.error:
-            print("Lease error: " + lease.state.error)
-            exit(1)
-    connect.Disconnect(si)
+    deployment = vmDeploy(ovf_path='D:\VMs\OVF\ovf_53X_64_500u1.ova\ovf_53X_64_500u1.ovf',
+                          vm_name='a82aflr02',
+                          nb_cpu=1,
+                          ram_ko=524248,
+                          lan='Lan Data',
+                          cluster_name='Cluster_Agora',
+                          datastore_name='CEDRE_029',
+                          datacenter_name='Zone LAN AGORA',
+                          esx_host='a82hhot20.agora.msanet',
+                          vm_folder='_Autres')
+    si = deployment.connect_vcenter(vcenter='a82avce02.agora.msanet', user='c82nbar', password='W--Vrtw2016-1')
+    deployment.deploy(si)
 
 
 if __name__ == "__main__":
