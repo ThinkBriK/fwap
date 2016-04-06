@@ -11,7 +11,7 @@
 import ssl
 from argparse import ArgumentParser
 from getpass import getpass
-from os import system, path
+from os import path, system
 from sys import exit
 from threading import Thread
 from time import sleep
@@ -201,6 +201,7 @@ class vmDeploy(object):
     def __init__(self, ovf_path, vm_name, nb_cpu, ram_ko, lan, datacenter_name, datastore_name,
                  cluster_name, esx_host, vm_folder):
         self.vm_name = vm_name
+        self.ovf_path = ovf_path
         self.ovf_descriptor = get_ovf_descriptor(ovf_path)
         self.nb_cpu = nb_cpu
         self.ram_ko = ram_ko
@@ -246,8 +247,8 @@ class vmDeploy(object):
         # On lance l'import OVF dans le resource Pool choisi en paramètre
         chosen_host = get_obj(si.content, vim.HostSystem, self.esx_host)
         chosen_folder = get_obj(si.content, vim.Folder, self.vm_folder)
+        # TODO : Rajouter de l'error handling sur la création du Lease (nom de machine existante etc ...)
         lease = objs["resource pool"].ImportVApp(import_spec.importSpec, folder=chosen_folder, host=chosen_host)
-
         msg = {str}
         keepalive_thread = Thread(target=keep_lease_alive, args=(lease,))
         keepalive_thread.start()
@@ -264,21 +265,25 @@ class vmDeploy(object):
                 # too.
                 for disk in import_spec.fileItem:
                     for devurl in lease.info.deviceUrl:
-                        # TODO : Vérifier que ce ne soit pas devurl.importKey
-                        if devurl.key == disk.deviceId:
+                        if devurl.importKey == disk.deviceId:
                             url = devurl.url.replace('*', self.vcenter)
                             break
+                    fullpath = path.dirname(self.ovf_path) + '\\' + disk.path
+                    print("Uploading %s to %s." % (fullpath, url))
+                    # TODO faire le curl dans un thread et MAJ l'avancemetn de l'upload dans vSphere
                     curl_cmd = (
                         "curl -Ss -X POST --insecure -T %s -H 'Content-Type:application/x-vnd.vmware-streamVmdk' %s" %
-                        (disk.path, url))
+                        (fullpath, url))
                     system(curl_cmd)
+                    print("Upload of %s : Done." % fullpath)
                 lease.HttpNfcLeaseComplete()
                 keepalive_thread.join()
-                return 0
+                break
             elif lease.state == vim.HttpNfcLease.State.error:
                 print("Lease error: " + lease.state.error)
                 exit(1)
         connect.Disconnect(si)
+        return 0
 
 
 def main():
@@ -296,7 +301,7 @@ def main():
                           esx_host='a82hhot20.agora.msanet',
                           vm_folder='_Autres')
     si = deployment.connect_vcenter(vcenter='a82avce02.agora.msanet', user='c82nbar', password='W--Vrtw2016-1')
-    deployment.deploy(si)
+    return deployment.deploy(si)
 
 
 if __name__ == "__main__":
