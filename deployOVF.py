@@ -8,6 +8,7 @@
 
  Script to deploy VM via a single .ovf and a single .vmdk file.
 """
+import atexit
 import ssl
 from argparse import ArgumentParser
 from getpass import getpass
@@ -18,6 +19,8 @@ from time import sleep
 
 from pyVim import connect
 from pyVmomi import vim
+
+from tools import tasks
 
 
 def get_args():
@@ -229,6 +232,7 @@ class vmDeploy(object):
         except:
             print("Unable to connect to %s" % vcenter)
             exit(1)
+        atexit.register(connect.Disconnect, service_instance)
         return service_instance
 
     def deploy(self, si):
@@ -270,20 +274,58 @@ class vmDeploy(object):
                             break
                     fullpath = path.dirname(self.ovf_path) + '\\' + disk.path
                     print("Uploading %s to %s." % (fullpath, url))
-                    # TODO faire le curl dans un thread et MAJ l'avancemetn de l'upload dans vSphere
+                    # TODO faire le curl dans un thread et MAJ l'avancement de l'upload dans vSphere
                     curl_cmd = (
                         "curl -Ss -X POST --insecure -T %s -H 'Content-Type:application/x-vnd.vmware-streamVmdk' %s" %
                         (fullpath, url))
                     system(curl_cmd)
                     print("Upload of %s : Done." % fullpath)
                 lease.HttpNfcLeaseComplete()
+                self.vm = lease.info.entity
                 keepalive_thread.join()
                 break
             elif lease.state == vim.HttpNfcLease.State.error:
                 print("Lease error: " + lease.state.error)
                 exit(1)
-        connect.Disconnect(si)
+        self.customize(si)
         return 0
+
+    def customize(self, service_instance):
+        new_vm_spec = vim.vm.ConfigSpec()
+        new_vm_spec.numCPUs = self.nb_cpu
+        # Arrondi de la division de la taille en KO par 1024
+        new_vm_spec.memoryMB = (self.ram_ko + 1024 // 2) // 1024
+
+        # Changement de vSwitch
+        vm = self.vm
+        # This code is for changing only one Interface. For multiple Interface
+        # Iterate through a loop of network names.
+        device_change = []
+        for device in vm.config.hardware.device:
+            if isinstance(device, vim.vm.device.VirtualEthernetCard):
+                nicspec = vim.vm.device.VirtualDeviceSpec()
+                nicspec.operation = vim.vm.device.VirtualDeviceSpec.Operation.edit
+                nicspec.device = device
+                nicspec.device.wakeOnLanEnabled = True
+                nicspec.device.backing = vim.vm.device.VirtualEthernetCard.NetworkBackingInfo()
+                nicspec.device.backing.network = get_obj(service_instance.RetrieveContent(), [vim.Network],
+                                                         self.wanted_lan_name)
+                nicspec.device.backing.deviceName = self.wanted_lan_name
+                nicspec.device.connectable = vim.vm.device.VirtualDevice.ConnectInfo()
+                nicspec.device.connectable.startConnected = True
+                nicspec.device.connectable.allowGuestControl = True
+                device_change.append(nicspec)
+                break
+        new_vm_spec.deviceChange = device_change
+
+        # TODO MAJ variables OVF
+        # vAppConfig(vim.vApp.VmConfigSpec) contient les méta-données OVF.
+
+        task = vm.ReconfigVM_Task(new_vm_spec)
+        tasks.wait_for_tasks(service_instance, [task])
+        print("Successfully reconfigured VM !")
+        return 0
+
 
 
 def main():
@@ -291,17 +333,18 @@ def main():
     # TODO a remplacer par args une fois le programme fonctionnel
 
     deployment = vmDeploy(ovf_path='D:\VMs\OVF\ovf_53X_64_500u1.ova\ovf_53X_64_500u1.ovf',
-                          vm_name='a82aflr02',
+                          vm_name='a82rxpm02',
                           nb_cpu=1,
-                          ram_ko=524248,
-                          lan='Lan Data',
+                          ram_ko=1 * 1024 * 1024,
+                          lan='LAN Data',
                           cluster_name='Cluster_Agora',
                           datastore_name='CEDRE_029',
                           datacenter_name='Zone LAN AGORA',
                           esx_host='a82hhot20.agora.msanet',
                           vm_folder='_Autres')
     si = deployment.connect_vcenter(vcenter='a82avce02.agora.msanet', user='c82nbar', password='W--Vrtw2016-1')
-    return deployment.deploy(si)
+    res = deployment.deploy(si)
+    return res
 
 
 if __name__ == "__main__":
