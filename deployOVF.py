@@ -202,7 +202,7 @@ def keep_lease_alive(lease):
 
 class vmDeploy(object):
     def __init__(self, ovf_path, vm_name, nb_cpu, ram_ko, lan, datacenter_name, datastore_name,
-                 cluster_name, esx_host, vm_folder):
+                 cluster_name, esx_host, vm_folder, ep, rds):
         self.vm_name = vm_name
         self.ovf_path = ovf_path
         self.ovf_descriptor = get_ovf_descriptor(ovf_path)
@@ -216,6 +216,8 @@ class vmDeploy(object):
         self.cluster_name = cluster_name
         self.esx_host = esx_host
         self.vm_folder = vm_folder
+        self.ep = ep.upper()
+        self.rds = rds.upper()
 
     def connect_vcenter(self, vcenter, user, password, port=443):
         self.vcenter = vcenter
@@ -318,8 +320,30 @@ class vmDeploy(object):
                 break
         new_vm_spec.deviceChange = device_change
 
-        # TODO MAJ variables OVF
-        # vAppConfig(vim.vApp.VmConfigSpec) contient les méta-données OVF.
+        # MAJ variables OVF
+        new_vAppConfig = vim.vApp.VmConfigSpec()
+        new_vAppConfig.property = []
+
+        for ovf_property in vm.config.vAppConfig.property:
+            updated_spec = vim.vApp.PropertySpec()
+            updated_spec.info = ovf_property
+            updated_spec.operation = vim.option.ArrayUpdateSpec.Operation.edit
+            if ovf_property.id == 'EP':
+                updated_spec.info.value = self.ep
+            elif ovf_property.id == 'hostname':
+                updated_spec.info.value = self.vm_name
+            elif ovf_property.id == 'RDS':
+                updated_spec.info.value = self.rds
+            elif ovf_property.id == 'url_referentiel':
+                if self.ep == 'D' or self.ep == 'E':
+                    updated_spec.info.value = 'http://a82amtl01.agora.msanet/repo/agora/scripts'
+                else:
+                    updated_spec.info.value = 'http://a82amtl02.agora.msanet/repo/agora/scripts'
+            else:
+                continue
+            new_vAppConfig.property.append(updated_spec)
+        new_vm_spec.vAppConfig = new_vAppConfig
+        new_vm_spec.vAppConfigRemoved = False
 
         task = vm.ReconfigVM_Task(new_vm_spec)
         tasks.wait_for_tasks(service_instance, [task])
@@ -341,9 +365,12 @@ def main():
                           datastore_name='CEDRE_029',
                           datacenter_name='Zone LAN AGORA',
                           esx_host='a82hhot20.agora.msanet',
-                          vm_folder='_Autres')
+                          vm_folder='_Autres',
+                          ep='I',
+                          rds='RXPM')
     si = deployment.connect_vcenter(vcenter='a82avce02.agora.msanet', user='c82nbar', password='W--Vrtw2016-1')
     res = deployment.deploy(si)
+
     return res
 
 
