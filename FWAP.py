@@ -98,11 +98,13 @@ class Server(object):
                                               size=lv.xpath('./lv_taille')[0].text)
                         lvs.append(newlv)
                         if not newlv.size == "[MEM]":
-                            total_disk_size += int(lv.xpath('./lv_taille')[0].text)
+                            # La taille nécessaire à la partitien représente 105% de la taille de la partition en EXT3
+                            total_disk_size += int(int(lv.xpath('./lv_taille')[0].text) * 105 / 100)
                         else:
                             mem_times += 1
-        self.disks.append(
-            ServerDisk(name=diskNode.text, vg=vgName, lvs=lvs, rawsize=total_disk_size, extra_mem_times_size=mem_times))
+            self.disks.append(
+                ServerDisk(name=diskNode.text, vg=vgName, lvs=lvs, partsize=total_disk_size,
+                           extra_mem_times_size=mem_times))
         return
 
     def print(self):
@@ -110,16 +112,16 @@ class Server(object):
 
 
 class ServerDisk(object):
-    def __init__(self, name, vg, lvs, rawsize, extra_mem_times_size):
+    def __init__(self, name, vg, lvs, partsize, extra_mem_times_size):
         self.name = name
         self.vg = vg
         self.lvs = lvs
-        self.rawsize = rawsize
+        self.partsize = partsize
         self.extra_mem_times_size = extra_mem_times_size
         return
 
     def __repr__(self):
-        return "%s : %s Ko (%s) volumes %s" % (self.name, self.rawsize, self.vg, self.lvs)
+        return "%s : %s Ko (%s) volumes %s" % (self.name, self.partsize, self.vg, self.lvs)
 
 
 class LogicalVolume(object):
@@ -135,7 +137,7 @@ class LogicalVolume(object):
 
 def main():
     # Parsing FWAP.XML
-    r = FwapFile("files/FWAP.xml").parse(servername="a82bic202")
+    r = FwapFile("files/FWAP.xml").parse(servername="a82sxpm02")
 
     for result in r:
         result.print()
