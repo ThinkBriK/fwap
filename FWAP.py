@@ -22,12 +22,12 @@ class FwapFile(object):
     Cette Classe permet de manipuler les fichers FWAP.xml d'Agora
     """
 
-    def __init__(self, file):
+    def __init__(self, url):
         """
 
-        :param file: Chemin du fichier FWAP à utiliser
+        :param url: URL du fichier FWAP à utiliser
         """
-        self.file = file
+        self.url = url
 
     def parse(self, ep=None, rds=None, servername=None):
         """
@@ -37,7 +37,7 @@ class FwapFile(object):
         :return: Une liste de FWAP.Server
         Extraction des donnees du fichier FWAP
         """
-        tree = etree.parse("file:///" + self.file)
+        tree = etree.parse(self.url)
 
         xpath_string = '/FWAP/Environnement'
         if ep:
@@ -98,11 +98,13 @@ class Server(object):
                                               size=lv.xpath('./lv_taille')[0].text)
                         lvs.append(newlv)
                         if not newlv.size == "[MEM]":
-                            total_disk_size += int(lv.xpath('./lv_taille')[0].text)
+                            # La taille nécessaire à la partitien représente 105% de la taille de la partition en EXT3
+                            total_disk_size += int(int(lv.xpath('./lv_taille')[0].text) * 105 / 100)
                         else:
                             mem_times += 1
-        self.disks.append(
-            ServerDisk(name=diskNode.text, vg=vgName, lvs=lvs, rawsize=total_disk_size, extra_mem_times_size=mem_times))
+            self.disks.append(
+                ServerDisk(name=diskNode.text, vg=vgName, lvs=lvs, partsize=total_disk_size,
+                           extra_mem_times_size=mem_times))
         return
 
     def print(self):
@@ -110,16 +112,16 @@ class Server(object):
 
 
 class ServerDisk(object):
-    def __init__(self, name, vg, lvs, rawsize, extra_mem_times_size):
+    def __init__(self, name, vg, lvs, partsize, extra_mem_times_size):
         self.name = name
         self.vg = vg
         self.lvs = lvs
-        self.rawsize = rawsize
+        self.partsize = partsize
         self.extra_mem_times_size = extra_mem_times_size
         return
 
     def __repr__(self):
-        return "%s : %s Ko (%s) volumes %s" % (self.name, self.rawsize, self.vg, self.lvs)
+        return "%s : %s Ko (%s) volumes %s" % (self.name, self.partsize, self.vg, self.lvs)
 
 
 class LogicalVolume(object):
@@ -135,7 +137,7 @@ class LogicalVolume(object):
 
 def main():
     # Parsing FWAP.XML
-    r = FwapFile("files/FWAP.xml").parse(servername="a82bic202")
+    r = FwapFile("http://a82amtl02.agora.msanet/repo/agora/scripts/referentiel.xml").parse(servername="a82sxpm02")
 
     for result in r:
         result.print()

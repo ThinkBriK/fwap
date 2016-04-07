@@ -146,21 +146,21 @@ def get_obj_in_list(obj_name, obj_list):
     exit(1)
 
 
-def get_objects(si, args):
+def get_objects(si, datacenter=None, datastore=None, cluster=None):
     """
     Return a dict containing the necessary objects for deployment.
     """
     # Get datacenter object.
     datacenter_list = si.content.rootFolder.childEntity
-    if args['datacenter_name']:
-        datacenter_obj = get_obj_in_list(args['datacenter_name'], datacenter_list)
+    if datacenter:
+        datacenter_obj = get_obj_in_list(datacenter, datacenter_list)
     else:
         datacenter_obj = datacenter_list[0]
 
     # Get datastore object.
     datastore_list = datacenter_obj.datastoreFolder.childEntity
-    if args['datastore_name']:
-        datastore_obj = get_obj_in_list(args['datastore_name'], datastore_list)
+    if datastore:
+        datastore_obj = get_obj_in_list(datastore, datastore_list)
     elif len(datastore_list) > 0:
         datastore_obj = datastore_list[0]
     else:
@@ -168,8 +168,8 @@ def get_objects(si, args):
 
     # Get cluster object.
     cluster_list = datacenter_obj.hostFolder.childEntity
-    if args['cluster_name']:
-        cluster_obj = get_obj_in_list(args['cluster_name'], cluster_list)
+    if cluster:
+        cluster_obj = get_obj_in_list(cluster, cluster_list)
     elif len(cluster_list) > 0:
         cluster_obj = cluster_list[0]
     else:
@@ -201,13 +201,13 @@ def keep_lease_alive(lease):
 
 
 class vmDeploy(object):
-    def __init__(self, ovf_path, vm_name, nb_cpu, ram_ko, lan, datacenter_name, datastore_name,
+    def __init__(self, ovf_path, vm_name, nb_cpu, ram, lan, datacenter_name, datastore_name,
                  cluster_name, esx_host, vm_folder, ep, rds):
         self.vm_name = vm_name
         self.ovf_path = ovf_path
         self.ovf_descriptor = get_ovf_descriptor(ovf_path)
         self.nb_cpu = nb_cpu
-        self.ram_ko = ram_ko
+        self.ram = ram
         self.wanted_lan_name = lan
         self.ovf_lan = lan
         self.ovf_manager = None
@@ -218,6 +218,7 @@ class vmDeploy(object):
         self.vm_folder = vm_folder
         self.ep = ep.upper()
         self.rds = rds.upper()
+        self.deployed_disks = 0
 
     def connect_vcenter(self, vcenter, user, password, port=443):
         self.vcenter = vcenter
@@ -244,7 +245,11 @@ class vmDeploy(object):
         wanted_lan = get_obj(si.content, vim.Network, self.wanted_lan_name)
         spec_params = vim.OvfManager.CreateImportSpecParams(entityName=self.vm_name)
         # On prépare la configuration de l'import à partir des arguments
-        objs = get_objects(si, self.__dict__)
+        objs = get_objects(si=si,
+                           datacenter=self.datacenter_name,
+                           cluster=self.cluster_name,
+                           datastore=self.datastore_name,
+                           )
         # On crée l'objet représentant l'import : import_spec
         import_spec = self.ovf_manager.CreateImportSpec(self.ovf_descriptor,
                                                         objs["resource pool"],
@@ -292,11 +297,52 @@ class vmDeploy(object):
         self.customize(si)
         return 0
 
+    def add_disk(self, disk_size, disk_type=''):
+        """
+
+        :param disk_size: Taille du disque en Mo
+        :param disk_type: Si "thin" création en thin provisionning
+        Ajout d'un disque à la VM
+        """
+        spec = vim.vm.ConfigSpec()
+        vm = self.vm
+        # get all disks on a VM, set unit_number to the next available
+        for dev in vm.config.hardware.device:
+            if hasattr(dev.backing, 'fileName'):
+                unit_number = int(dev.unitNumber) + 1 + self.deployed_disks
+                # unit_number 7 reserved for scsi controller
+                if unit_number == 7:
+                    unit_number += 1
+                if unit_number >= 16:
+                    print("Trop de disques !!!!")
+                    exit(1)
+            if isinstance(dev, vim.vm.device.VirtualSCSIController):
+                controller = dev
+        # add disk here
+        dev_changes = []
+        new_disk_kb = int(disk_size) * 1024
+        disk_spec = vim.vm.device.VirtualDeviceSpec()
+        disk_spec.fileOperation = "create"
+        disk_spec.operation = vim.vm.device.VirtualDeviceSpec.Operation.add
+        disk_spec.device = vim.vm.device.VirtualDisk()
+        disk_spec.device.backing = \
+            vim.vm.device.VirtualDisk.FlatVer2BackingInfo()
+        if disk_type == 'thin':
+            disk_spec.device.backing.thinProvisioned = True
+        disk_spec.device.backing.diskMode = 'persistent'
+        disk_spec.device.unitNumber = unit_number
+        disk_spec.device.capacityInKB = new_disk_kb
+        disk_spec.device.controllerKey = controller.key
+        dev_changes.append(disk_spec)
+        spec.deviceChange = dev_changes
+        vm.ReconfigVM_Task(spec=spec)
+        print("Disque /dev/sd%s de %s Mo ajouté à %s" % (chr(ord('a') + unit_number), disk_size, self.vm_name))
+        self.deployed_disks += 1
+
     def customize(self, service_instance):
         new_vm_spec = vim.vm.ConfigSpec()
         new_vm_spec.numCPUs = self.nb_cpu
-        # Arrondi de la division de la taille en KO par 1024
-        new_vm_spec.memoryMB = (self.ram_ko + 1024 // 2) // 1024
+        new_vm_spec.memoryMB = (self.ram * 1024)
 
         # Changement de vSwitch
         vm = self.vm
@@ -319,6 +365,7 @@ class vmDeploy(object):
                 device_change.append(nicspec)
                 break
         new_vm_spec.deviceChange = device_change
+
 
         # MAJ variables OVF
         new_vAppConfig = vim.vApp.VmConfigSpec()
@@ -359,7 +406,7 @@ def main():
     deployment = vmDeploy(ovf_path='D:\VMs\OVF\ovf_53X_64_500u1.ova\ovf_53X_64_500u1.ovf',
                           vm_name='a82rxpm02',
                           nb_cpu=1,
-                          ram_ko=1 * 1024 * 1024,
+                          ram=1 * 1024 * 1024,
                           lan='LAN Data',
                           cluster_name='Cluster_Agora',
                           datastore_name='CEDRE_029',
