@@ -31,6 +31,23 @@ def get_args():
                                 required=False,
                                 action='store',
                                 help='MTL à utiliser')
+
+    parser.add_argument('--eol',
+                        required=False,
+                        action='store',
+                        default='Perenne',
+                        help='End of life of the VM (default=Perenne)')
+
+    parser.add_argument('--fonction',
+                        required=True,
+                        action='store',
+                        help='Function of the VM')
+
+    parser.add_argument('--demandeur',
+                        required=True,
+                        action='store',
+                        help='Name of the requester')
+
     parser.add_argument('--name',
                         required=True,
                         action='store',
@@ -103,7 +120,7 @@ def get_args():
                         default="Zone LAN AGORA",
                         )
 
-    parser.add_argument('--folder',
+    parser.add_argument('--vmfolder',
                         required=False,
                         action='store',
                         help='Name of the Folder containing the VM',
@@ -135,20 +152,13 @@ def main():
         fwap_location = "http://" + args.mtl + "/repo/agora/scripts/referentiel.xml"
     r = (FwapFile(fwap_location).parse(servername=args.name))[0]
     # r.print()
-    # TODO Rajouter la MAJ des tools et la maj des propriétés des VMs!
-    deployment = vmDeploy(ovf_path=args.ovfpath + '\\' + os.get(r.os),
-                          vm_name=args.name,
-                          nb_cpu=args.vcpu,
-                          ram=args.ram,
-                          lan=args.lan,
-                          cluster_name=args.cluster,
-                          datastore_name=args.datastore,
-                          datacenter_name=args.datacenter,
-                          esx_host=args.esx,
-                          vm_folder=args.folder,
-                          ep=r.ep,
-                          rds=r.rds,
-                          )
+    # TODO Rajouter la MAJ des tools
+    args.ovfpath = args.ovfpath + '\\' + os.get(r.os)
+    args.ep = r.ep
+    args.rds = r.rds
+    # On passe les variables saisies dans args comme paramètres directement
+    deployment = vmDeploy(**args.__dict__)
+
     si = deployment.connect_vcenter(vcenter=args.vcenter, user=args.user, password=args.password)
     deployment.deploy(si)
     for disk in r.disks:

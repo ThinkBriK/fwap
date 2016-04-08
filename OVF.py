@@ -9,6 +9,7 @@
  Script to deploy VM via a single .ovf and a single .vmdk file.
 """
 import atexit
+import datetime
 import ssl
 from argparse import ArgumentParser
 from getpass import getpass
@@ -28,6 +29,22 @@ def get_args():
     Get CLI arguments.
     """
     parser = ArgumentParser(description='Arguments for talking to vCenter')
+
+    parser.add_argument('--eol',
+                        required=False,
+                        action='store',
+                        default='Perenne',
+                        help='End of life of the VM (default=Perenne)')
+
+    parser.add_argument('--demandeur',
+                        required=True,
+                        action='store',
+                        help='Name of the requester')
+
+    parser.add_argument('--fonction',
+                        required=True,
+                        action='store',
+                        help='Function of the VM')
 
     parser.add_argument('-s', '--vcenter',
                         required=True,
@@ -201,24 +218,27 @@ def keep_lease_alive(lease):
 
 
 class vmDeploy(object):
-    def __init__(self, ovf_path, vm_name, nb_cpu, ram, lan, datacenter_name, datastore_name,
-                 cluster_name, esx_host, vm_folder, ep, rds):
-        self.vm_name = vm_name
-        self.ovf_path = ovf_path
-        self.ovf_descriptor = get_ovf_descriptor(ovf_path)
-        self.nb_cpu = nb_cpu
+    def __init__(self, ovfpath, name, vcpu, ram, lan, datacenter, datastore,
+                 cluster, esx, vmfolder, ep, rds, demandeur, fonction, eol, **kwargs):
+        self.vm_name = name
+        self.ovf_path = ovfpath
+        self.ovf_descriptor = get_ovf_descriptor(ovfpath)
+        self.nb_cpu = vcpu
         self.ram = ram
         self.wanted_lan_name = lan
         self.ovf_lan = lan
         self.ovf_manager = None
-        self.datacenter_name = datacenter_name
-        self.datastore_name = datastore_name
-        self.cluster_name = cluster_name
-        self.esx_host = esx_host
-        self.vm_folder = vm_folder
+        self.datacenter_name = datacenter
+        self.datastore_name = datastore
+        self.cluster_name = cluster
+        self.esx_host = esx
+        self.vm_folder = vmfolder
         self.ep = ep.upper()
         self.rds = rds.upper()
         self.deployed_disks = 0
+        self.demandeur = demandeur
+        self.fonction = fonction
+        self.eol = eol
 
     def connect_vcenter(self, vcenter, user, password, port=443):
         self.vcenter = vcenter
@@ -245,6 +265,7 @@ class vmDeploy(object):
         wanted_lan = get_obj(si.content, vim.Network, self.wanted_lan_name)
         spec_params = vim.OvfManager.CreateImportSpecParams(entityName=self.vm_name)
         # On prépare la configuration de l'import à partir des arguments
+        # TODO Réexaminer l'intéret de cette fonction get_objects
         objs = get_objects(si=si,
                            datacenter=self.datacenter_name,
                            cluster=self.cluster_name,
@@ -259,6 +280,7 @@ class vmDeploy(object):
         chosen_host = get_obj(si.content, vim.HostSystem, self.esx_host)
         chosen_folder = get_obj(si.content, vim.Folder, self.vm_folder)
         # TODO : Rajouter de l'error handling sur la création du Lease (nom de machine existante etc ...)
+        # TODO virer les références au cluster et au datacenter si ce n'est pas nécessire
         lease = objs["resource pool"].ImportVApp(import_spec.importSpec, folder=chosen_folder, host=chosen_host)
         msg = {str}
         keepalive_thread = Thread(target=keep_lease_alive, args=(lease,))
@@ -371,6 +393,15 @@ class vmDeploy(object):
         new_vAppConfig = vim.vApp.VmConfigSpec()
         new_vAppConfig.property = []
 
+        # MAJ Attributs vSphere
+        self.vm.setCustomValue(key="Admin Systeme", value="POP")
+        self.vm.setCustomValue(key="Date creation", value=str(datetime.date.today()))
+        self.vm.setCustomValue(key="Date fin de vie", value=self.eol)
+        self.vm.setCustomValue(key="Demandeur", value=self.demandeur)
+        self.vm.setCustomValue(key="Environnement", value=self.ep)
+        self.vm.setCustomValue(key="Fonction", value=self.fonction)
+        self.vm.setCustomValue(key="LAN", value=self.wanted_lan_name)
+
         for ovf_property in vm.config.vAppConfig.property:
             updated_spec = vim.vApp.PropertySpec()
             updated_spec.info = ovf_property
@@ -403,18 +434,21 @@ def main():
     # args = get_args()
     # TODO a remplacer par args une fois le programme fonctionnel
 
-    deployment = vmDeploy(ovf_path='D:\VMs\OVF\ovf_53X_64_500u1.ova\ovf_53X_64_500u1.ovf',
-                          vm_name='a82rxpm02',
-                          nb_cpu=1,
+    deployment = vmDeploy(ovfpath='D:\VMs\OVF\ovf_53X_64_500u1.ova\ovf_53X_64_500u1.ovf',
+                          name='a82rxpm02',
+                          vcpu=1,
                           ram=1 * 1024 * 1024,
                           lan='LAN Data',
-                          cluster_name='Cluster_Agora',
-                          datastore_name='CEDRE_029',
-                          datacenter_name='Zone LAN AGORA',
-                          esx_host='a82hhot20.agora.msanet',
-                          vm_folder='_Autres',
+                          cluster='Cluster_Agora',
+                          datastore='CEDRE_029',
+                          datacenter='Zone LAN AGORA',
+                          esx='a82hhot20.agora.msanet',
+                          vmfolder='_Autres',
                           ep='I',
-                          rds='RXPM')
+                          rds='RXPM',
+                          demandeur='Benoit BARTHELEMY',
+                          fonction="tests déploiement",
+                          eol="perenne", )
     si = deployment.connect_vcenter(vcenter='a82avce02.agora.msanet', user='c82nbar', password='W--Vrtw2016-1')
     res = deployment.deploy(si)
 
