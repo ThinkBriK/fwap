@@ -151,8 +151,7 @@ def main():
     else:
         fwap_location = "http://" + args.mtl + "/repo/agora/scripts/referentiel.xml"
     r = (FwapFile(fwap_location).parse(servername=args.name))[0]
-    # r.print()
-    # TODO Rajouter la MAJ des tools
+
     args.ovfpath = args.ovfpath + '\\' + os.get(r.os)
     args.ep = r.ep
     args.rds = r.rds

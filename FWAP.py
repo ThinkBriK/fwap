@@ -5,7 +5,8 @@ Email: benoit.barthelemy2@open-groupe.com
 Script pour requêter le FWAP.xml afin d'en extraire les informations des VM
 """
 import pprint
-import re
+from tkinter import *
+from tkinter import ttk
 
 from lxml import etree
 
@@ -54,6 +55,18 @@ class FwapFile(object):
         for fwap_entry in tree.xpath(xpath_string):
             result.append(Server(element=fwap_entry))
         return result
+
+    def get_tk_tree(self, parent):
+        tree = ttk.Treeview(parent)
+        xmltree = etree.parse(self.url)
+        xpath_string = '/FWAP/Environnement'
+        for ep_entry in xmltree.xpath(xpath_string):
+            ep_id = tree.insert(parent='', index='end', text=ep_entry.get('EP'))
+            for rds_entry in ep_entry.xpath('./RoleServeur'):
+                rds_id = tree.insert(parent=ep_id, index='end', text=rds_entry.get('RDS'))
+                for server_entry in rds_entry.xpath('./Cluster/MachineVirtuelle'):
+                    tree.insert(parent=rds_id, index='end', text=server_entry.get('SERVERNAME'))
+        return tree
 
 
 class Server(object):

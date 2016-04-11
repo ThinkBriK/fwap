@@ -317,6 +317,7 @@ class vmDeploy(object):
                 print("Lease error: " + lease.state.error)
                 exit(1)
         self.customize(si)
+        # TODO Rajouter la MAJ des tools
         return 0
 
     def add_disk(self, disk_size, disk_type=''):
