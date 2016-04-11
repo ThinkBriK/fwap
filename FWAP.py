@@ -56,16 +56,27 @@ class FwapFile(object):
             result.append(Server(element=fwap_entry))
         return result
 
-    def get_tk_tree(self, parent):
-        tree = ttk.Treeview(parent)
+    def get_tk_tree(self, parent, type, label="FWAP.XML"):
+
+        """
+
+        :param parent: Element auquel ratacher le TreeView
+        :param label: Titre du treeView
+        :param type: Type d'élément à sélectionner (serveur|ep|rds)
+        :return: treeView généré
+        """
+        tree = ttk.Treeview(parent, selectmode='browse')
         xmltree = etree.parse(self.url)
         xpath_string = '/FWAP/Environnement'
         for ep_entry in xmltree.xpath(xpath_string):
             ep_id = tree.insert(parent='', index='end', text=ep_entry.get('EP'))
-            for rds_entry in ep_entry.xpath('./RoleServeur'):
-                rds_id = tree.insert(parent=ep_id, index='end', text=rds_entry.get('RDS'))
-                for server_entry in rds_entry.xpath('./Cluster/MachineVirtuelle'):
-                    tree.insert(parent=rds_id, index='end', text=server_entry.get('SERVERNAME'))
+            if type != 'ep':
+                for rds_entry in ep_entry.xpath('./RoleServeur'):
+                    rds_id = tree.insert(parent=ep_id, index='end', text=rds_entry.get('RDS'))
+                    if type != 'rds':
+                        for server_entry in rds_entry.xpath('./Cluster/MachineVirtuelle'):
+                            tree.insert(parent=rds_id, index='end', text=server_entry.get('SERVERNAME'))
+        tree.heading('#0', text=label)
         return tree
 
 

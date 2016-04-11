@@ -1,58 +1,91 @@
-#!/usr/bin/env python
-"""
- Ecrit par Benoit BARTHELEMY
- benoit.barthelemy2@open-groupe.com
+import tkinter as Tk
 
- Script permettant de tester l'interface graphique
-"""
-from tkinter import *
+import FWAP
 
-from FWAP import FwapFile
 
-fenetre = Tk()
+########################################################################
+class OtherFrame(Tk.Toplevel):
+    """"""
 
-# vmDeploy(ovfpath, name, vcpu, ram, lan, datacenter, datastore, cluster, esx, vmfolder, ep, rds, demandeur, fonction, eol)
-# deployment.connect_vcenter(vcenter=args.vcenter, user=args.user, password=args.password)
+    # ----------------------------------------------------------------------
+    def __init__(self):
+        """Constructor"""
+        Tk.Toplevel.__init__(self)
+        self.geometry("400x300")
+        self.title("otherFrame")
 
-label = Label(fenetre, text="Hello World")
-label.pack()
-# # liste
-# liste = Listbox(fenetre)
-# liste.insert(1, "Python")
-# liste.insert(2, "PHP")
-# liste.insert(3, "jQuery")
-# liste.insert(4, "CSS")
-# liste.insert(5, "Javascript")
-#
-# liste.pack()
-#
-# countryvar = "country"
-# countries= ("France","Allemagne", "Pays-Bas")
-# country = ttk.Combobox(fenetre, values=countries, textvariable=countryvar)
-#
-# country.pack()
-#
-# tree = ttk.Treeview(fenetre)
-#
-# # Inserted at the root, program chooses id:
-# tree.insert('', 'end', 'widgets', text='Widget Tour')
-#
-# # Same thing, but inserted as first child:
-# tree.insert('', 0, 'gallery', text='Applications')
-#
-# # Treeview chooses the id:
-# id = tree.insert('', 'end', text='Tutorial')
-#
-# # Inserted underneath an existing node:
-# tree.insert('widgets', 'end', text='Canvas')
-# tree.insert(id, 'end', text='Tree')
 
-myFwap = FwapFile("files\FWAP.xml")
-tree = myFwap.get_tk_tree(fenetre)
-tree.pack()
+########################################################################
+class MyApp(object):
+    """"""
 
-# bouton de sortie
-bouton = Button(fenetre, text="Fermer", command=fenetre.quit)
-bouton.pack()
+    # ----------------------------------------------------------------------
+    def __init__(self, parent, fwapfile):
+        """Constructor"""
+        self.root = parent
+        self.root.title("Déploiement TAT1")
+        self.frame = Tk.Frame(parent)
+        self.frame.pack()
+        self.fwapfile = FWAP.FwapFile(fwapfile)
+        self.display_xml_window()
 
-fenetre.mainloop()
+    # ----------------------------------------------------------------------
+    def hide(self):
+        """"""
+        self.root.withdraw()
+
+    # ----------------------------------------------------------------------
+    def openFrame(self):
+        """"""
+        self.hide()
+        subFrame = OtherFrame()
+        handler = lambda: self.onCloseOtherFrame(subFrame)
+        btn = Tk.Button(subFrame, text="Close", command=handler)
+        btn.pack()
+
+    # ----------------------------------------------------------------------
+    def onCloseOtherFrame(self, otherFrame):
+        """"""
+        otherFrame.destroy()
+        self.show()
+
+    # ----------------------------------------------------------------------
+    def show(self):
+        """"""
+        self.root.update()
+        self.root.deiconify()
+
+    # ----------------------------------------------------------------------
+    def display_xml_window(self):
+        fenetre = self.frame
+        tree = self.fwapfile.get_tk_tree(fenetre, label="Choisissez un serveur", type='serveur')
+        tree.pack()
+
+        # bouton de sortie
+        boutonFermer = Tk.Button(fenetre, text="Fermer", command=fenetre.quit)
+        boutonFermer.pack(side='left')
+        boutonOK = Tk.Button(fenetre, text="OK", command=fenetre.quit)
+        boutonOK.pack(side='right')
+        fenetre.mainloop()
+        choix = tree.focus()
+
+        # TODO Manquent vcenter, user, password, vcpu, ram, lan, datacenter, datastore, cluster, esx, vmfolder, demandeur, fonction, eol,
+        # TODO passer ovfpath en conf
+
+
+        servername = tree.item(choix)['text']
+        print("servername = " + servername)
+
+        rds = tree.parent(choix)
+        print("RDS = " + tree.item(rds)['text'])
+
+        ep = tree.parent(rds)
+        print("EP = " + tree.item(ep)['text'])
+
+
+# ----------------------------------------------------------------------
+if __name__ == "__main__":
+    root = Tk.Tk()
+    root.geometry()
+    app = MyApp(root, 'files/FWAP.xml')
+    root.mainloop()
