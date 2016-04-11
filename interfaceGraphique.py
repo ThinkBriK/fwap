@@ -31,6 +31,8 @@ class MyApp(object):
         self._create_fwap_tab(nb)
         self._create_vcenter_tab(nb)
         self._create_request_tab(nb)
+        self._create_vi_tab(nb)
+
 
     # ----------------------------------------------------------------------
     def onFwapSelect(self, tree):
@@ -63,12 +65,15 @@ class MyApp(object):
         notebook.add(frame, text='FWAP', padding=2)
 
     # ----------------------------------------------------------------------
+    def onSetViCredentials(self, vcenter, usr, passwd, notebook):
+
+        self.onUpdateParams(
+            params_dict={'vcenter': vcenter.get(), 'password': passwd.get(), 'user': usr.get()})
+        notebook.tab(3, state="normal")
+
     def _create_vcenter_tab(self, notebook):
         """"""
         frame = ttk.Frame(notebook, name='vcenter')
-
-        handler = lambda: self.onUpdateParams(
-            params_dict={'vcenter': vcenter.get(), 'password': passwd.get(), 'user': usr.get()})
 
         label_vcenter = Tk.Label(frame, text="vCenter")
         label_vcenter.grid(row=0, column=0, sticky='W')
@@ -86,6 +91,7 @@ class MyApp(object):
         passwd = Tk.Entry(frame, show="*", width=25)
         passwd.grid(row=2, column=1, sticky='W')
 
+        handler = lambda: self.onSetViCredentials(vcenter, usr, passwd, notebook)
         btn = Tk.Button(frame, text="OK", command=handler)
         btn.grid(row=3, column=1, sticky='W')
 
@@ -143,6 +149,11 @@ class MyApp(object):
         # vmfolder, lan dépendent de l'ESX sélectionné
 
     # ----------------------------------------------------------------------
+    def _create_vi_tab(self, notebook):
+        # TODO Rajouter vcpu, ram, lan, datacenter, datastore, cluster, esx, vmfolder,
+        frame = ttk.Frame(notebook, name='vi')
+        notebook.add(frame, text='Infrastructure vmWare', padding=2, state='disabled')
+    # ----------------------------------------------------------------------
     def onUpdateParams(self, params_dict):
         """"""
         for key in params_dict.keys():
@@ -150,11 +161,6 @@ class MyApp(object):
 
         print(self.__dict__)
 
-    # ----------------------------------------------------------------------
-    def show(self):
-        """"""
-        self.root.update()
-        self.root.deiconify()
 
 
 
@@ -165,5 +171,5 @@ if __name__ == "__main__":
     root.geometry()
     app = MyApp(root, 'files/FWAP.xml')
     root.mainloop()
-    # TODO Rajouter vcpu, ram, lan, datacenter, datastore, cluster, esx, vmfolder,
+
     # TODO Passer ovfpath en params
