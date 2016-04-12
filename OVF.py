@@ -217,9 +217,26 @@ def keep_lease_alive(lease):
             return
 
 
+def connect_vcenter(vcenter, user, password, port=443):
+    # Disabling SSL certificate verification
+    context = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
+    context.verify_mode = ssl.CERT_NONE
+    try:
+        service_instance = connect.SmartConnect(host=vcenter,
+                                                user=user,
+                                                pwd=password,
+                                                port=port,
+                                                sslContext=context,
+                                                )
+    except:
+        print("Unable to connect to %s" % vcenter)
+        exit(1)
+    atexit.register(connect.Disconnect, service_instance)
+    return service_instance
+
 class vmDeploy(object):
-    def __init__(self, ovfpath, name, vcpu, ram, lan, datacenter, datastore,
-                 cluster, esx, vmfolder, ep, rds, demandeur, fonction, eol, **kwargs):
+    def __init__(self, ovfpath, name, vcpu, ram, lan, datastore, esx, vmfolder, ep, rds, demandeur, fonction, eol,
+                 **kwargs):
         self.vm_name = name
         self.ovf_path = ovfpath
         self.ovf_descriptor = get_ovf_descriptor(ovfpath)
@@ -228,9 +245,7 @@ class vmDeploy(object):
         self.wanted_lan_name = lan
         self.ovf_lan = lan
         self.ovf_manager = None
-        self.datacenter_name = datacenter
         self.datastore_name = datastore
-        self.cluster_name = cluster
         self.esx_host = esx
         self.vm_folder = vmfolder
         self.ep = ep.upper()
@@ -239,25 +254,6 @@ class vmDeploy(object):
         self.demandeur = demandeur
         self.fonction = fonction
         self.eol = eol
-
-    def connect_vcenter(self, vcenter, user, password, port=443):
-        self.vcenter = vcenter
-        # Disabling SSL certificate verification
-        context = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
-        context.verify_mode = ssl.CERT_NONE
-        try:
-            service_instance = connect.SmartConnect(host=vcenter,
-                                                    user=user,
-                                                    pwd=password,
-                                                    port=port,
-                                                    sslContext=context,
-                                                    )
-        except:
-            print("Unable to connect to %s" % vcenter)
-            exit(1)
-        atexit.register(connect.Disconnect, service_instance)
-        return service_instance
-
     def deploy(self, si):
         self.ovf_manager = si.content.ovfManager
         ovf_object = self.ovf_manager.ParseDescriptor(self.ovf_descriptor, vim.OvfManager.ParseDescriptorParams())
@@ -267,8 +263,6 @@ class vmDeploy(object):
         # On prépare la configuration de l'import à partir des arguments
         # TODO Réexaminer l'intéret de cette fonction get_objects
         objs = get_objects(si=si,
-                           datacenter=self.datacenter_name,
-                           cluster=self.cluster_name,
                            datastore=self.datastore_name,
                            )
         # On crée l'objet représentant l'import : import_spec
@@ -450,7 +444,7 @@ def main():
                           demandeur='Benoit BARTHELEMY',
                           fonction="tests déploiement",
                           eol="perenne", )
-    si = deployment.connect_vcenter(vcenter='a82avce02.agora.msanet', user='c82nbar', password='W--Vrtw2016-1')
+    si = connect_vcenter(vcenter='a82avce02.agora.msanet', user='c82nbar', password='W--Vrtw2016-1')
     res = deployment.deploy(si)
 
     return res
