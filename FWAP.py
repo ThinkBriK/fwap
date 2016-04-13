@@ -66,6 +66,7 @@ class FwapFile(object):
         :return: treeView généré
         """
         tree = ttk.Treeview(parent, selectmode='browse')
+        tree.column("#0", stretch=True)
         xmltree = etree.parse(self.url)
         xpath_string = '/FWAP/Environnement'
         for ep_entry in xmltree.xpath(xpath_string):
