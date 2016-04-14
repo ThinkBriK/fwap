@@ -159,7 +159,7 @@ def get_obj_in_list(obj_name, obj_list):
         if o.name == obj_name:
             return o
     print("Unable to find object by the name of %s in list:\n%s" %
-          (o.name, map(lambda o: o.name, obj_list)))
+          (obj_name, map(lambda o: o.name, obj_list)))
     exit(1)
 
 
@@ -167,15 +167,26 @@ def get_objects(si, datacenter=None, datastore=None, cluster=None):
     """
     Return a dict containing the necessary objects for deployment.
     """
+    # TODO à remplacer d'urgence !
     # Get datacenter object.
-    datacenter_list = si.content.rootFolder.childEntity
+    datacenter_list = []
+
+    for toplevel_entity in si.content.rootFolder.childEntity:
+        if type(toplevel_entity) == vim.Datacenter:
+            datacenter_list.append(toplevel_entity)
+
     if datacenter:
         datacenter_obj = get_obj_in_list(datacenter, datacenter_list)
     else:
         datacenter_obj = datacenter_list[0]
 
     # Get datastore object.
-    datastore_list = datacenter_obj.datastoreFolder.childEntity
+    datastore_list = []
+    for datacenter_entity in datacenter_list:
+        for datastore_entity in datacenter_entity.datastoreFolder.childEntity:
+            if type(datastore_entity) == vim.Datastore:
+                datastore_list.append(datastore_entity)
+
     if datastore:
         datastore_obj = get_obj_in_list(datastore, datastore_list)
     elif len(datastore_list) > 0:
@@ -184,7 +195,13 @@ def get_objects(si, datacenter=None, datastore=None, cluster=None):
         print("No datastores found in DC (%s)." % datacenter_obj.name)
 
     # Get cluster object.
-    cluster_list = datacenter_obj.hostFolder.childEntity
+    cluster_list = []
+    for datacenter_entity in datacenter_list:
+        for cluster_entity in datacenter_entity.hostFolder.childEntity:
+            if type(cluster_entity) == vim.ClusterComputeResource:
+                cluster_list.append(cluster_entity)
+
+
     if cluster:
         cluster_obj = get_obj_in_list(cluster, cluster_list)
     elif len(cluster_list) > 0:
@@ -236,6 +253,7 @@ def connect_vcenter(vcenter, user, password, port=443):
 
 class vmDeploy(object):
     def __init__(self, ovfpath, name, vcpu, ram, lan, datastore, esx, vmfolder, ep, rds, demandeur, fonction, eol,
+                 vcenter,
                  **kwargs):
         self.vm_name = name
         self.ovf_path = ovfpath
@@ -254,25 +272,34 @@ class vmDeploy(object):
         self.demandeur = demandeur
         self.fonction = fonction
         self.eol = eol
+        self.vcenter = vcenter
     def deploy(self, si):
         self.ovf_manager = si.content.ovfManager
         ovf_object = self.ovf_manager.ParseDescriptor(self.ovf_descriptor, vim.OvfManager.ParseDescriptorParams())
         self.ovf_lan_name = ovf_object.network[0].name
         wanted_lan = get_obj(si.content, vim.Network, self.wanted_lan_name)
         spec_params = vim.OvfManager.CreateImportSpecParams(entityName=self.vm_name)
+
+        # On lance l'import OVF dans le resource Pool choisi en paramètre
+        chosen_host = get_obj(si.content, vim.HostSystem, self.esx_host)
+        chosen_folder = get_obj(si.content, vim.Folder, self.vm_folder)
+
         # On prépare la configuration de l'import à partir des arguments
-        # TODO Réexaminer l'intéret de cette fonction get_objects
-        objs = get_objects(si=si,
-                           datastore=self.datastore_name,
-                           )
+        objs = {}
+        objs['datastore'] = get_obj(content=si.content, vimtype=vim.Datastore, name=self.datastore_name)
+        if type(chosen_host.parent) == vim.ClusterComputeResource:
+            objs['cluster'] = chosen_host.parent
+            objs['resource pool'] = chosen_host.parent.resourcePool
+        else:
+            objs['cluster'] = None
+            objs['resource pool'] = None
+
         # On crée l'objet représentant l'import : import_spec
         import_spec = self.ovf_manager.CreateImportSpec(self.ovf_descriptor,
                                                         objs["resource pool"],
                                                         objs["datastore"],
                                                         spec_params)
-        # On lance l'import OVF dans le resource Pool choisi en paramètre
-        chosen_host = get_obj(si.content, vim.HostSystem, self.esx_host)
-        chosen_folder = get_obj(si.content, vim.Folder, self.vm_folder)
+
         # TODO : Rajouter de l'error handling sur la création du Lease (nom de machine existante etc ...)
         # TODO virer les références au cluster et au datacenter si ce n'est pas nécessire
         lease = objs["resource pool"].ImportVApp(import_spec.importSpec, folder=chosen_folder, host=chosen_host)
@@ -359,7 +386,7 @@ class vmDeploy(object):
     def customize(self, service_instance):
         new_vm_spec = vim.vm.ConfigSpec()
         new_vm_spec.numCPUs = self.nb_cpu
-        new_vm_spec.memoryMB = (self.ram * 1024)
+        new_vm_spec.memoryMB = self.ram // 1024
 
         # Changement de vSwitch
         vm = self.vm
