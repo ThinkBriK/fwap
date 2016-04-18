@@ -56,7 +56,7 @@ class FwapFile(object):
             result.append(Server(element=fwap_entry))
         return result
 
-    def get_tk_tree(self, parent, type, label="FWAP.XML"):
+    def get_tk_tree(self, parent, type, name, label="FWAP.XML"):
 
         """
 
@@ -65,8 +65,9 @@ class FwapFile(object):
         :param type: Type d'élément à sélectionner (serveur|ep|rds)
         :return: treeView généré
         """
-        tree = ttk.Treeview(parent, selectmode='browse')
+        tree = ttk.Treeview(parent, selectmode='browse', name=name)
         tree.column("#0", stretch=True)
+        tree.heading('#0', text=label)
         xmltree = etree.parse(self.url)
         xpath_string = '/FWAP/Environnement'
         for ep_entry in xmltree.xpath(xpath_string):
@@ -77,7 +78,6 @@ class FwapFile(object):
                     if type != 'rds':
                         for server_entry in rds_entry.xpath('./Cluster/MachineVirtuelle'):
                             tree.insert(parent=rds_id, index='end', text=server_entry.get('SERVERNAME'))
-        tree.heading('#0', text=label)
         return tree
 
 
