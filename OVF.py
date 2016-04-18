@@ -301,7 +301,7 @@ class vmDeploy(object):
                                                         spec_params)
 
         # TODO : Rajouter de l'error handling sur la création du Lease (nom de machine existante etc ...)
-        # TODO virer les références au cluster et au datacenter si ce n'est pas nécessire
+
         lease = objs["resource pool"].ImportVApp(import_spec.importSpec, folder=chosen_folder, host=chosen_host)
         msg = {str}
         keepalive_thread = Thread(target=keep_lease_alive, args=(lease,))
