@@ -123,7 +123,7 @@ class Server(object):
                                               size=lv.xpath('./lv_taille')[0].text)
                         lvs.append(newlv)
                         if not newlv.size == "[MEM]":
-                            # La taille nécessaire à la partitien représente 105% de la taille de la partition en EXT3
+                            # La taille nécessaire à la partition représente 105% de la taille de la partition en EXT3
                             total_disk_size += int(int(lv.xpath('./lv_taille')[0].text) * 105 / 100)
                         else:
                             mem_times += 1
@@ -146,7 +146,7 @@ class ServerDisk(object):
         return
 
     def __repr__(self):
-        return "%s : %s Ko (%s) volumes %s" % (self.name, self.partsize, self.vg, self.lvs)
+        return "%s : %s Mo (%s) volumes %s" % (self.name, self.partsize, self.vg, self.lvs)
 
 
 class LogicalVolume(object):
@@ -157,7 +157,7 @@ class LogicalVolume(object):
         return
 
     def __repr__(self):
-        return "%s on %s (%s Ko)" % (self.name, self.mount, self.size)
+        return "%s on %s (%s Mo)" % (self.name, self.mount, self.size)
 
 
 def main():

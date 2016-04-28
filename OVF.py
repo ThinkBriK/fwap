@@ -350,14 +350,14 @@ class vmDeploy(object):
         for disk in self.disks:
             print(disk)
             # On déploie le disque de la taille des partitions + la taille des partitions sizées sur la RAM (+5% pour EXT3) + 64 M0 (pour LVM)
-            kbsize = int(disk.partsize + disk.extra_mem_times_size * (self.ram + 1) * 1024 * 105 / 100 + 64)
+            mosize = int(disk.partsize + (disk.extra_mem_times_size * (self.ram + 1) * 1024 * 105 / 100) + 64)
 
             # On arrondi aux 100 Mo supérieur
-            if (kbsize % 100) > 0:
-                kbrounded = kbsize // 100 + 1
+            if (mosize % 100) > 0:
+                morounded = mosize // 100 + 1
             else:
-                kbrounded = kbsize / 100
-            self.add_disk(disk_size=kbrounded * 100)
+                morounded = mosize / 100
+            self.add_disk(disk_size=morounded * 100)
 
     def add_disk(self, disk_size, disk_type=''):
         """
