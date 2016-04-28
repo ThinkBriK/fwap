@@ -451,7 +451,7 @@ class vmDeploy(object):
                 updated_spec.info.value = self.vm_name
             elif ovf_property.id == 'RDS':
                 updated_spec.info.value = self.rds
-            elif ovf_property.id == 'url_referentiel'
+            elif ovf_property.id == 'url_referentiel':
                 if self.ep == 'D' or self.ep == 'E':
                     updated_spec.info.value = 'http://a82amtl01.agora.msanet/repo/agora/scripts'
                 else:
