@@ -451,11 +451,16 @@ class vmDeploy(object):
                 updated_spec.info.value = self.vm_name
             elif ovf_property.id == 'RDS':
                 updated_spec.info.value = self.rds
-            elif ovf_property.id == 'url_referentiel' or ovf_property.id == 'MTL_HOST_REPO':
+            elif ovf_property.id == 'url_referentiel'
                 if self.ep == 'D' or self.ep == 'E':
                     updated_spec.info.value = 'http://a82amtl01.agora.msanet/repo/agora/scripts'
                 else:
                     updated_spec.info.value = 'http://a82amtl02.agora.msanet/repo/agora/scripts'
+            elif ovf_property.id == 'MTL_HOST_REPO':
+                if self.ep == 'D' or self.ep == 'E':
+                    updated_spec.info.value = 'a82amtl01.agora.msanet'
+                else:
+                    updated_spec.info.value = 'a82amtl02.agora.msanet'
             else:
                 continue
             new_vAppConfig.property.append(updated_spec)
