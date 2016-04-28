@@ -17,6 +17,8 @@ OS_OVF = {
 }
 
 DEFAULT_FWAP_FILE = 'http://a82amtl01.agora.msanet/repo/agora/scripts/referentiel.xml'
+FWAP_FILES = ['http://a82amtl01.agora.msanet/repo/agora/scripts/referentiel.xml',
+              'http://a82amtl02.agora.msanet/repo/agora/scripts/referentiel.xml']
 
 ########################################################################
 class MyApp(object):
@@ -90,7 +92,9 @@ class MyApp(object):
                     new_param.grid(sticky='w')
                 else:
                     # MAJ d'un paramètre
-                    frame_params.children[arg].text = param_text
+                    frame_params.children[arg]['text'] = param_text
+
+                    # frame_params.
 
         if ready:
             self.frame.children['deploy'].config(state='normal')
@@ -111,8 +115,10 @@ class MyApp(object):
             fonction=self.fonction,
             eol=self.eol,
             vcenter=self.vcenter,
+            disks=self.serverinfo.disks,
         )
-        exit(deployment.deploy(self.si))
+
+        deployment.deploy(self.si)
 
     def __repr__(self):
         representation = ''
@@ -137,21 +143,22 @@ class ConfigTab(AppTab):
     def __init__(self, app, notebook):
         super().__init__(app=app, notebook=notebook, name='config')
 
-        label_ovf_path = ttk.Label(self, text="Chemin vers la racine des OVF ")
+        label_ovf_path = ttk.Label(self, text="Répertoire racine des OVF")
         label_ovf_path.grid(row=0, column=0, sticky='W')
-        ovf_path = ttk.Entry(self, width=30)
+        ovf_path = ttk.Entry(self, width=60)
         ovf_path.insert(0, 'D:\VMs\OVF')
-        ovf_path.grid(row=0, column=1, sticky='NSEW')
+        ovf_path.grid(row=0, column=1, sticky='NESW')
 
         label_fwap_path = ttk.Label(self, text="URL du FWAP")
-        label_fwap_path.grid(row=1, column=0, sticky='W')
-        fwap_path = ttk.Entry(self, width=30)
-        fwap_path.insert(0, DEFAULT_FWAP_FILE)
+        label_fwap_path.grid(row=1, column=0, sticky='E')
+        fwap_path = ttk.Combobox(self, width=60, state='normal', values=FWAP_FILES)
+        fwap_path.current(0)
+        # fwap_path.insert(0, DEFAULT_FWAP_FILE)
         fwap_path.grid(row=1, column=1, sticky='W')
 
         boutonOK = ttk.Button(self, text="OK",
                               command=lambda: self._onUpdateConfig(ovf_path=ovf_path.get(), fwap_path=fwap_path.get()))
-        boutonOK.grid(row=3, column=1, sticky='nsew')
+        boutonOK.grid(row=3, column=1, sticky='e', pady=5)
 
         notebook.add(self, text='Configuration', padding=2)
 
@@ -183,7 +190,7 @@ class VcenterTab(AppTab):
 
         handler = lambda: self._onSetViCredentials(vcenter, usr, passwd, notebook)
         btn = ttk.Button(self, text="OK", command=handler)
-        btn.grid(row=3, column=1, sticky='NSEW')
+        btn.grid(row=3, column=1, sticky='S', pady=5)
 
         notebook.add(self, text='Connexion vCenter (déconnecté)', padding=2)
 
@@ -221,7 +228,7 @@ class FwapTab(AppTab):
 
         handler = lambda: self._onFwapSelect(tree)
         boutonOK = ttk.Button(self, text="OK", command=handler)
-        boutonOK.grid(row=1, column=0, sticky='NSEW')
+        boutonOK.grid(row=1, column=0, sticky='S', pady=5)
 
         notebook.add(self, text='FWAP', padding=2)
 
@@ -294,7 +301,7 @@ class RequestTab(AppTab):
         sep2.grid(row=6, column=0, columnspan=5, sticky='NSEW', padx=2, pady=2)
 
         btn = ttk.Button(self, text="OK", command=handler)
-        btn.grid(row=7, column=0, columnspan=5, sticky='NESW')
+        btn.grid(row=7, column=0, columnspan=5, sticky='S', pady=5)
 
         notebook.add(self, text='Demande', padding=2)
 
@@ -335,12 +342,9 @@ class VirtualInfraTab(AppTab):
                                     host_id = tree.insert(parent=cluster_id, index='end', text=cluster_member.name)
         tree.grid(row=0, rowspan=3, column=0, sticky='NESW')
 
-        sep = ttk.Separator(self, orient='horizontal')
-        sep.grid(row=3, column=0, sticky='NSEW', padx=2, pady=2)
-
         handler = lambda: self._onChooseDeployServer(tree=tree)
         btn = ttk.Button(frame, text="OK", command=handler)
-        btn.grid(row=4, column=0, sticky='NESW')
+        btn.grid(row=3, column=0, sticky='S', pady=5)
 
     def _onChooseDeployServer(self, tree):
         choix = tree.focus()
@@ -397,13 +401,10 @@ class VirtualInfraTab(AppTab):
                     self._build_folder_tree(tree, dc_id, vmFolder_element)
         tree.grid(row=2, column=3, sticky="NSEW", padx=3)
 
-        sep = ttk.Separator(self, orient='horizontal')
-        sep.grid(row=3, column=3, sticky='NSEW', padx=2, pady=2)
-
         # Bouton de validation
         handler = lambda: self._onViInfoChosen(datastore_list=datastores_tab)
         btn = ttk.Button(frame, text="OK", command=handler)
-        btn.grid(row=4, column=3, sticky='NESW', padx=3)
+        btn.grid(row=3, column=3, sticky='S', pady=5, padx=3)
 
     def _build_folder_tree(self, tree, parentid, element):
         if type(element) == pyVmomi.types.vim.Folder:

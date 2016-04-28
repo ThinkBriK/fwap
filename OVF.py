@@ -253,7 +253,7 @@ def connect_vcenter(vcenter, user, password, port=443):
 
 class vmDeploy(object):
     def __init__(self, ovfpath, name, vcpu, ram, lan, datastore, esx, vmfolder, ep, rds, demandeur, fonction, eol,
-                 vcenter,
+                 vcenter, disks,
                  **kwargs):
         self.vm_name = name
         self.ovf_path = ovfpath
@@ -268,11 +268,13 @@ class vmDeploy(object):
         self.vm_folder = vmfolder
         self.ep = ep.upper()
         self.rds = rds.upper()
+        self.disks = disks
         self.deployed_disks = 0
         self.demandeur = demandeur
         self.fonction = fonction
         self.eol = eol
         self.vcenter = vcenter
+
     def deploy(self, si):
         self.ovf_manager = si.content.ovfManager
         ovf_object = self.ovf_manager.ParseDescriptor(self.ovf_descriptor, vim.OvfManager.ParseDescriptorParams())
@@ -325,6 +327,7 @@ class vmDeploy(object):
                     fullpath = path.dirname(self.ovf_path) + '\\' + disk.path
                     print("Uploading %s to %s." % (fullpath, url))
                     # TODO faire le curl dans un thread et MAJ l'avancement de l'upload dans vSphere
+                    # TODO remplacer Curl par une librairie Python
                     curl_cmd = (
                         "curl -Ss -X POST --insecure -T %s -H 'Content-Type:application/x-vnd.vmware-streamVmdk' %s" %
                         (fullpath, url))
@@ -337,9 +340,24 @@ class vmDeploy(object):
             elif lease.state == vim.HttpNfcLease.State.error:
                 print("Lease error: " + lease.state.error)
                 exit(1)
-        self.customize(si)
+        self._customize(si)
+        self._add_disks()
+
         # TODO Rajouter la MAJ des tools
         return 0
+
+    def _add_disks(self):
+        for disk in self.disks:
+            print(disk)
+            # On déploie le disque de la taille des partitions + la taille des partitions sizées sur la RAM (+5% pour EXT3) + 64 M0 (pour LVM)
+            kbsize = int(disk.partsize + disk.extra_mem_times_size * (self.ram + 1) * 1024 * 105 / 100 + 64)
+
+            # On arrondi aux 100 Mo supérieur
+            if (kbsize % 100) > 0:
+                kbrounded = kbsize // 100 + 1
+            else:
+                kbrounded = kbsize / 100
+            self.add_disk(disk_size=kbrounded * 100)
 
     def add_disk(self, disk_size, disk_type=''):
         """
@@ -383,7 +401,7 @@ class vmDeploy(object):
         print("Disque /dev/sd%s de %s Mo ajouté à %s" % (chr(ord('a') + unit_number), disk_size, self.vm_name))
         self.deployed_disks += 1
 
-    def customize(self, service_instance):
+    def _customize(self, service_instance):
         new_vm_spec = vim.vm.ConfigSpec()
         new_vm_spec.numCPUs = self.nb_cpu
         new_vm_spec.memoryMB = self.ram // 1024
@@ -410,11 +428,6 @@ class vmDeploy(object):
                 break
         new_vm_spec.deviceChange = device_change
 
-
-        # MAJ variables OVF
-        new_vAppConfig = vim.vApp.VmConfigSpec()
-        new_vAppConfig.property = []
-
         # MAJ Attributs vSphere
         self.vm.setCustomValue(key="Admin Systeme", value="POP")
         self.vm.setCustomValue(key="Date creation", value=str(datetime.date.today()))
@@ -423,6 +436,10 @@ class vmDeploy(object):
         self.vm.setCustomValue(key="Environnement", value=self.ep)
         self.vm.setCustomValue(key="Fonction", value=self.fonction)
         self.vm.setCustomValue(key="LAN", value=self.wanted_lan_name)
+
+        # MAJ variables OVF
+        new_vAppConfig = vim.vApp.VmConfigSpec()
+        new_vAppConfig.property = []
 
         for ovf_property in vm.config.vAppConfig.property:
             updated_spec = vim.vApp.PropertySpec()
@@ -434,7 +451,7 @@ class vmDeploy(object):
                 updated_spec.info.value = self.vm_name
             elif ovf_property.id == 'RDS':
                 updated_spec.info.value = self.rds
-            elif ovf_property.id == 'url_referentiel':
+            elif ovf_property.id == 'url_referentiel' or ovf_property.id == 'MTL_HOST_REPO':
                 if self.ep == 'D' or self.ep == 'E':
                     updated_spec.info.value = 'http://a82amtl01.agora.msanet/repo/agora/scripts'
                 else:
@@ -447,6 +464,7 @@ class vmDeploy(object):
 
         task = vm.ReconfigVM_Task(new_vm_spec)
         tasks.wait_for_tasks(service_instance, [task])
+
         print("Successfully reconfigured VM !")
         return 0
 
