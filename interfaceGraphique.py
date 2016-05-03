@@ -364,6 +364,11 @@ class VirtualInfraTab(AppTab):
         content = app.si.RetrieveContent()
         host = OVF.get_obj(content, pyVmomi.vim.HostSystem, app.esx)
 
+        # On détermine le DC de l'hôte
+        datacenter_element = host.parent
+        while type(datacenter_element) != pyVmomi.types.vim.Datacenter:
+            datacenter_element = datacenter_element.parent
+
         # Ajout d'un séparateur
         separator = ttk.Separator(frame, orient='vertical')
         separator.grid(row=0, column=1, rowspan=4, sticky='NSEW', padx=3)
@@ -394,11 +399,10 @@ class VirtualInfraTab(AppTab):
         tree = ttk.Treeview(frame, selectmode='browse', name='folderTree')
         tree.column("#0", minwidth=30)
         tree.heading("#0", text="Sélectionner un Dossier")
-        for datacenter_element in content.rootFolder.childEntity:
-            if type(datacenter_element) == pyVmomi.types.vim.Datacenter:
-                dc_id = tree.insert(parent='', index='end', text=datacenter_element.name)
-                for vmFolder_element in datacenter_element.vmFolder.childEntity:
-                    self._build_folder_tree(tree, dc_id, vmFolder_element)
+        if type(datacenter_element) == pyVmomi.types.vim.Datacenter:
+            dc_id = tree.insert(parent='', index='end', text=datacenter_element.name, open=True)
+            for vmFolder_element in datacenter_element.vmFolder.childEntity:
+                self._build_folder_tree(tree, dc_id, vmFolder_element)
         tree.grid(row=2, column=3, sticky="NSEW", padx=3)
 
         # Bouton de validation
