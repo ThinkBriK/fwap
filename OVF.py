@@ -167,7 +167,7 @@ def get_objects(si, datacenter=None, datastore=None, cluster=None):
     """
     Return a dict containing the necessary objects for deployment.
     """
-    # TODO à remplacer d'urgence !
+
     # Get datacenter object.
     datacenter_list = []
 
@@ -343,7 +343,6 @@ class vmDeploy(object):
         self._customize(si)
         self._add_disks()
 
-        # TODO Rajouter la MAJ des tools
         return 0
 
     def _add_disks(self):
