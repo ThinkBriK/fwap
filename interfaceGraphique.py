@@ -20,12 +20,25 @@ DEFAULT_FWAP_FILE = 'http://a82amtl01.agora.msanet/repo/agora/scripts/referentie
 FWAP_FILES = ['http://a82amtl01.agora.msanet/repo/agora/scripts/referentiel.xml',
               'http://a82amtl02.agora.msanet/repo/agora/scripts/referentiel.xml']
 
+
 ########################################################################
 class MyApp(object):
     """"""
 
     def __init__(self, parent, fwapfile=None):
         """Constructor"""
+        self.si = None
+        self.vcenter = None
+        self.eol = None
+        self.fonction = None
+        self.demandeur = None
+        self.vmfolder = None
+        self.esx = None
+        self.datastore = None
+        self.lan = None
+        self.ram = None
+        self.vcpus = None
+        self.serverinfo = None
         self.root = parent
         self.root.title("Déploiement TAT1")
         self.frame = ttk.Frame(self.root)
@@ -314,32 +327,65 @@ class VirtualInfraTab(AppTab):
     def populateViTree(self):
         frame = self
         parent = self.app
-        tree = ttk.Treeview(frame, selectmode='browse')
+        tree = ttk.Treeview(frame, selectmode='browse', columns=['RAM', 'CPU'])
         tree.column("#0", minwidth=30)
         tree.heading("#0", text="Sélectionner un Hôte")
+        tree.column("RAM", minwidth=10)
+        tree.heading("RAM", text="RAM Utilisée")
+        tree.column("CPU", minwidth=10)
+        tree.heading("CPU", text="CPU Utilisée")
         content = parent.si.RetrieveContent()
         # TODO Remplacer l'alimentation de l'arbre vmware par une fonction récursive
         # Datacenters
         for datacenter_element in content.rootFolder.childEntity:
             if type(datacenter_element) == pyVmomi.types.vim.Datacenter:
-                dc_id = tree.insert(parent='', index='end', text=datacenter_element.name)
+                dc_id = tree.insert(parent='', index='end', text=datacenter_element.name, values=['', ''])
                 # Clusters
                 for host_element in datacenter_element.hostFolder.childEntity:
                     if type(host_element) == pyVmomi.types.vim.ComputeResource:
-                        host_id = tree.insert(parent=dc_id, index='end', text=host_element.name)
+                        host_id = tree.insert(parent=dc_id, index='end', text=host_element.name, values=['', ''])
                     elif type(host_element) == pyVmomi.types.vim.ClusterComputeResource:
-                        cluster_id = tree.insert(parent=dc_id, index='end', text=host_element.name)
+                        cluster_id = tree.insert(parent=dc_id, index='end', text=host_element.name, values=['', ''])
                         for cluster_member in host_element.host:
-                            host_id = tree.insert(parent=cluster_id, index='end', text=cluster_member.name)
+                            cpu_usage_mhz = cluster_member.summary.quickStats.overallCpuUsage
+                            total_mhz = cluster_member.summary.hardware.numCpuCores * cluster_member.summary.hardware.cpuMhz
+                            mem_usage_mo = cluster_member.summary.quickStats.overallMemoryUsage
+                            total_mem_mo = cluster_member.summary.hardware.memorySize / 1024 / 1024
+                            host_id = tree.insert(parent=cluster_id, index='end', text=cluster_member.name,
+                                                  values=["%.2f Go (%.2f %%)" % (mem_usage_mo / 1024,
+                                                                                 mem_usage_mo / total_mem_mo * 100),
+                                                          "%.2f Ghz (%.2f %%)" % (
+                                                              cpu_usage_mhz / 1024,
+                                                              cpu_usage_mhz / total_mhz * 100)])
                     elif type(host_element) == pyVmomi.types.vim.Folder:
-                        folder_id = tree.insert(parent=dc_id, index='end', text=host_element.name)
+                        folder_id = tree.insert(parent=dc_id, index='end', text=host_element.name, values=['', ''])
                         for folder_member in host_element.childEntity:
                             if type(folder_member) == pyVmomi.types.vim.ComputeResource:
-                                host_id = tree.insert(parent=folder_id, index='end', text=folder_member.name)
+                                for resourceGroupMember in folder_member.host:
+                                    cpu_usage_mhz = resourceGroupMember.summary.quickStats.overallCpuUsage
+                                    total_mhz = resourceGroupMember.summary.hardware.numCpuCores * resourceGroupMember.summary.hardware.cpuMhz
+                                    mem_usage_mo = resourceGroupMember.summary.quickStats.overallMemoryUsage
+                                    total_mem_mo = resourceGroupMember.summary.hardware.memorySize / 1024 / 1024
+                                    host_id = tree.insert(parent=folder_id, index='end', text=resourceGroupMember.name,
+                                                          values=["%.2f Go (%.2f %%)" % (mem_usage_mo / 1024,
+                                                                                         mem_usage_mo / total_mem_mo * 100),
+                                                                  "%.2f Ghz (%.2f %%)" % (
+                                                                      cpu_usage_mhz / 1024,
+                                                                      cpu_usage_mhz / total_mhz * 100)])
                             elif type(folder_member) == pyVmomi.types.vim.ClusterComputeResource:
-                                cluster_id = tree.insert(parent=folder_id, index='end', text=folder_member.name)
+                                cluster_id = tree.insert(parent=folder_id, index='end', text=folder_member.name,
+                                                         values=['', ''])
                                 for cluster_member in folder_member.host:
-                                    host_id = tree.insert(parent=cluster_id, index='end', text=cluster_member.name)
+                                    cpu_usage_mhz = cluster_member.summary.quickStats.overallCpuUsage
+                                    total_mhz = cluster_member.summary.hardware.numCpuCores * cluster_member.summary.hardware.cpuMhz
+                                    mem_usage_mo = cluster_member.summary.quickStats.overallMemoryUsage
+                                    total_mem_mo = cluster_member.summary.hardware.memorySize / 1024 / 1024
+                                    host_id = tree.insert(parent=cluster_id, index='end', text=cluster_member.name,
+                                                          values=["%.2f Go (%.2f %%)" % (mem_usage_mo / 1024,
+                                                                                         mem_usage_mo / total_mem_mo * 100),
+                                                                  "%.2f Ghz (%.2f %%)" % (
+                                                                      cpu_usage_mhz / 1024,
+                                                                      cpu_usage_mhz / total_mhz * 100)])
         tree.grid(row=0, rowspan=3, column=0, sticky='NESW')
 
         handler = lambda: self._onChooseDeployServer(tree=tree)
