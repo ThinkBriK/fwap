@@ -284,7 +284,10 @@ class vmDeploy(object):
 
         # On lance l'import OVF dans le resource Pool choisi en paramètre
         chosen_host = get_obj(si.content, vim.HostSystem, self.esx_host)
-        chosen_folder = get_obj(si.content, vim.Folder, self.vm_folder)
+        if type(self.vm_folder) == vim.Folder:
+            chosen_folder = self.vm_folder
+        else:
+            chosen_folder = get_obj(si.content, vim.Folder, self.vm_folder)
 
         # On prépare la configuration de l'import à partir des arguments
         objs = {}

@@ -430,8 +430,8 @@ class VirtualInfraTab(AppTab):
         folder_label = ttk.Label(frame, text="Choisissez le dossier")
         folder_label.grid(row=2, column=2, sticky="W", padx=3)
         tree = ttk.Treeview(frame, selectmode='browse', name='folderTree')
-        tree.column("#0", minwidth=30)
-        tree.heading("#0", text="Sélectionner un Dossier")
+        tree.column('#0', minwidth=30)
+        tree.heading('#0', text="Sélectionner un Dossier")
         if type(datacenter_element) == pyVmomi.types.vim.Datacenter:
             dc_id = tree.insert(parent='', index='end', text=datacenter_element.name, open=True)
             for vmFolder_element in datacenter_element.vmFolder.childEntity:
@@ -445,7 +445,7 @@ class VirtualInfraTab(AppTab):
 
     def _build_folder_tree(self, tree, parentid, element):
         if type(element) == pyVmomi.types.vim.Folder:
-            folderid = tree.insert(parent=parentid, index='end', text=element.name)
+            folderid = tree.insert(parent=parentid, index='end', text=element.name, values=[element._moId])
             for child in element.childEntity:
                 self._build_folder_tree(tree, folderid, child)
 
@@ -460,7 +460,7 @@ class VirtualInfraTab(AppTab):
         # Récupération du Folder
         tree = frame.children['folderTree']
         choix = tree.focus()
-        params['vmfolder'] = tree.item(choix)['text']
+        params['vmfolder'] = pyVmomi.types.vim.Folder(tree.item(choix)['values'][0])
         app.updateParams(params)
 
 
