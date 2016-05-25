@@ -276,6 +276,7 @@ class vmDeploy(object):
         self.vcenter = vcenter
 
     def deploy(self, si):
+        # TODO Rajouter la sélection systématique du CDROM du client (si l'hôte a un CD dans le lecteur tout foire)
         self.ovf_manager = si.content.ovfManager
         ovf_object = self.ovf_manager.ParseDescriptor(self.ovf_descriptor, vim.OvfManager.ParseDescriptorParams())
         self.ovf_lan_name = ovf_object.network[0].name
