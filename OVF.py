@@ -1,12 +1,6 @@
 #!/usr/bin/env python
 """
- Written by Tony Allen
- Github: https://github.com/stormbeard
- Blog: https://stormbeard.net/
- This code has been released under the terms of the Apache 2 licenses
- http://www.apache.org/licenses/LICENSE-2.0.html
-
- Script to deploy VM via a single .ovf and a single .vmdk file.
+Script pour déployer une VM TAT1
 """
 import atexit
 import datetime
@@ -276,7 +270,7 @@ class vmDeploy(object):
         self.vcenter = vcenter
 
     def deploy(self, si):
-        # TODO Rajouter la sélection systématique du CDROM du client (si l'hôte a un CD dans le lecteur tout foire)
+
         self.ovf_manager = si.content.ovfManager
         ovf_object = self.ovf_manager.ParseDescriptor(self.ovf_descriptor, vim.OvfManager.ParseDescriptorParams())
         self.ovf_lan_name = ovf_object.network[0].name
@@ -346,8 +340,39 @@ class vmDeploy(object):
                 exit(1)
         self._customize(si)
         self._add_disks()
+        self._correct_cdrom(si)
+        self._take_snapshot(service_instance=si, snapshot_name="Avant premier boot",
+                            description="Snapshot automatique avant premier boot")
 
         return 0
+
+    def _correct_cdrom(self, si):
+        # Rajoute la sélection systématique du CDROM du client (si l'hôte a un CD dans le lecteur tout foire)
+        virtual_cdrom_device = None
+        for dev in self.vm.config.hardware.device:
+            if isinstance(dev, vim.vm.device.VirtualCdrom):
+                virtual_cdrom_device = dev
+
+        if not virtual_cdrom_device:
+            raise RuntimeError('Virtual CDROM could not '
+                               'be found.')
+        virtual_cd_spec = vim.vm.device.VirtualDeviceSpec()
+        virtual_cd_spec.operation = vim.vm.device.VirtualDeviceSpec.Operation.edit
+        virtual_cd_spec.device = vim.vm.device.VirtualCdrom()
+        virtual_cd_spec.device.controllerKey = virtual_cdrom_device.controllerKey
+        virtual_cd_spec.device.key = virtual_cdrom_device.key
+        virtual_cd_spec.device.connectable = vim.vm.device.VirtualDevice.ConnectInfo()
+        virtual_cd_spec.device.backing = vim.vm.device.VirtualCdrom.RemotePassthroughBackingInfo()
+
+        # Allowing guest control
+        virtual_cd_spec.device.connectable.allowGuestControl = True
+
+        dev_changes = []
+        dev_changes.append(virtual_cd_spec)
+        spec = vim.vm.ConfigSpec()
+        spec.deviceChange = dev_changes
+        task = self.vm.ReconfigVM_Task(spec=spec)
+        tasks.wait_for_tasks(si, [task])
 
     def _add_disks(self):
         for disk in self.disks:
@@ -476,6 +501,15 @@ class vmDeploy(object):
         print("Successfully reconfigured VM !")
         return 0
 
+    def _take_snapshot(self, service_instance, snapshot_name="Snapshot", description=None, dumpMemory=False,
+                       quiesce=False):
+        vm = self.vm
+        try:
+            task = vm.CreateSnapshot(snapshot_name, description, dumpMemory, quiesce)
+            tasks.wait_for_tasks(service_instance, [task])
+        except:
+            raise
+        print("Snapshot " + snapshot_name + " créé !")
 
 
 def main():
@@ -483,7 +517,7 @@ def main():
     # TODO a remplacer par args une fois le programme fonctionnel
 
     deployment = vmDeploy(ovfpath='D:\VMs\OVF\ovf_53X_64_500u1.ova\ovf_53X_64_500u1.ovf',
-                          name='a82rxpm02',
+                          name='a82aflr02',
                           vcpu=1,
                           ram=1 * 1024 * 1024,
                           lan='LAN Data',
@@ -497,7 +531,7 @@ def main():
                           demandeur='Benoit BARTHELEMY',
                           fonction="tests déploiement",
                           eol="perenne", )
-    si = connect_vcenter(vcenter='a82avce02.agora.msanet', user='c82nbar', password='W--Vrtw2016-1')
+    si = connect_vcenter(vcenter='a82avce02.agora.msanet', user='c82nbar', password='********')
     res = deployment.deploy(si)
 
     return res
