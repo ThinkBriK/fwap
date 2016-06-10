@@ -247,7 +247,7 @@ def connect_vcenter(vcenter, user, password, port=443):
 
 class vmDeploy(object):
     def __init__(self, ovfpath, name, vcpu, ram, lan, datastore, esx, vmfolder, ep, rds, demandeur, fonction, eol,
-                 vcenter, disks,
+                 vcenter, disks, mtl=None,
                  **kwargs):
         self.vm_name = name
         self.ovf_path = ovfpath
@@ -268,6 +268,7 @@ class vmDeploy(object):
         self.fonction = fonction
         self.eol = eol
         self.vcenter = vcenter
+        self.mtl = mtl
 
     def deploy(self, si):
 
@@ -480,15 +481,21 @@ class vmDeploy(object):
             elif ovf_property.id == 'RDS':
                 updated_spec.info.value = self.rds
             elif ovf_property.id == 'url_referentiel':
-                if self.ep == 'D' or self.ep == 'E':
-                    updated_spec.info.value = 'http://a82amtl01.agora.msanet/repo/agora/scripts'
+                if self.mtl:
+                    updated_spec.info.value = 'http://' + self.mtl + '/repo/agora/scripts'
                 else:
-                    updated_spec.info.value = 'http://a82amtl02.agora.msanet/repo/agora/scripts'
+                    if self.ep == 'D' or self.ep == 'E':
+                        updated_spec.info.value = 'http://a82amtl01.agora.msanet/repo/agora/scripts'
+                    else:
+                        updated_spec.info.value = 'http://a82amtl02.agora.msanet/repo/agora/scripts'
             elif ovf_property.id == 'MTL_HOST_REPO':
-                if self.ep == 'D' or self.ep == 'E':
-                    updated_spec.info.value = 'a82amtl01.agora.msanet'
+                if self.mtl:
+                    updated_spec.info.value = self.mtl
                 else:
-                    updated_spec.info.value = 'a82amtl02.agora.msanet'
+                    if self.ep == 'D' or self.ep == 'E':
+                        updated_spec.info.value = 'a82amtl01.agora.msanet'
+                    else:
+                        updated_spec.info.value = 'a82amtl02.agora.msanet'
             else:
                 continue
             new_vAppConfig.property.append(updated_spec)

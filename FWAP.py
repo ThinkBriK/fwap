@@ -73,7 +73,17 @@ class FwapFile(object):
         for ep_entry in xmltree.xpath(xpath_string):
             ep_id = tree.insert(parent='', index='end', text=ep_entry.get('EP'))
             if type != 'ep':
-                for rds_entry in ep_entry.xpath('./RoleServeur'):
+
+                # Tri des RDS
+                rds_entries = ep_entry.xpath('./RoleServeur')
+                data = []
+                for elem in rds_entries:
+                    key = elem.get('RDS')
+                    data.append((key, elem))
+                data.sort(key=lambda rds: rds[0])
+                rds_entries[:] = [item[-1] for item in data]
+
+                for rds_entry in rds_entries:
                     rds_id = tree.insert(parent=ep_id, index='end', text=rds_entry.get('RDS'))
                     if type != 'rds':
                         for server_entry in rds_entry.xpath('./Cluster/MachineVirtuelle'):
@@ -95,6 +105,7 @@ class Server(object):
         self.ip = element.xpath('./IPADDR')[0].text
         self.rds = element.xpath('../..')[0].get('RDS')
         self.ep = element.xpath('../../..')[0].get('EP')
+        self.mtl = element.xpath('./MTL_HOST_REPO')[0].text
         # OS
         m = re.match('.*(?<=_DVD)', element.xpath('../../proprietesroot_RDS/REPO_LINUX')[0].text)
         if m:
@@ -127,6 +138,7 @@ class Server(object):
                             total_disk_size += int(int(lv.xpath('./lv_taille')[0].text) * 105 / 100)
                         else:
                             mem_times += 1
+            # TODO Rajouter gestion Javacore
             self.disks.append(
                 ServerDisk(name=diskNode.text, vg=vgName, lvs=lvs, partsize=total_disk_size,
                            extra_mem_times_size=mem_times))

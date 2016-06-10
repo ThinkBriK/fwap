@@ -39,6 +39,7 @@ class MyApp(object):
         self.ram = None
         self.vcpus = None
         self.serverinfo = None
+        self.mtl = None
         self.root = parent
         self.root.title("Déploiement TAT1")
         self.frame = ttk.Frame(self.root)
@@ -129,6 +130,7 @@ class MyApp(object):
             eol=self.eol,
             vcenter=self.vcenter,
             disks=self.serverinfo.disks,
+            mtl=self.serverinfo.mtl
         )
 
         deployment.deploy(self.si)
@@ -390,7 +392,6 @@ class VirtualInfraTab(AppTab):
             self.populateDetails()
 
     def populateDetails(self):
-        # TODO vérifier que les éléments n'existent pas afin d'éviter de les dupliquer !
         frame = self
         app = self.app
 
