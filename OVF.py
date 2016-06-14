@@ -251,16 +251,12 @@ def connect_vcenter(vcenter, user, password, port=443):
 
 
 def uploadOVF(url=None, fileFullPath=None):
-    # fullpath = path.dirname(self.ovf_path) + '\\' + disk.path
-    # print("Uploading %s to %s." % (fullpath, url))
-    # curl_cmd = (
-    #     "curl -Ss -X POST --insecure -T %s -H 'Content-Type:application/x-vnd.vmware-streamVmdk' %s" %
-    #     (fullpath, url))
     headers = {'Content-Type': 'application/x-vnd.vmware-streamVmdk'}
+    # Upload en Streaming vu la taille des images de VMs
     with open(fileFullPath, 'rb') as f:
         r = requests.post(url=url, headers=headers, data=f, verify=False)
+    # Gestion des erreurs
     r.raise_for_status()
-    print(r.text)
 
 class vmDeploy(object):
     def __init__(self, ovfpath, name, vcpu, ram, lan, datastore, esx, vmfolder, ep, rds, demandeur, fonction, eol,
