@@ -7,14 +7,16 @@ import datetime
 import ssl
 from argparse import ArgumentParser
 from getpass import getpass
-from os import path, system
+from os import path
 from sys import exit
 from threading import Thread
 from time import sleep
 
+import requests
 from pyVim import connect
 from pyVmomi import vim
 
+import FWAP
 from tools import tasks
 
 
@@ -187,6 +189,7 @@ def get_objects(si, datacenter=None, datastore=None, cluster=None):
         datastore_obj = datastore_list[0]
     else:
         print("No datastores found in DC (%s)." % datacenter_obj.name)
+        datastore_obj = None
 
     # Get cluster object.
     cluster_list = []
@@ -202,6 +205,7 @@ def get_objects(si, datacenter=None, datastore=None, cluster=None):
         cluster_obj = cluster_list[0]
     else:
         print("No clusters found in DC (%s)." % datacenter_obj.name)
+        cluster_obj = None
 
     # Generate resource pool.
     resource_pool_obj = cluster_obj.resourcePool
@@ -244,6 +248,19 @@ def connect_vcenter(vcenter, user, password, port=443):
         exit(1)
     atexit.register(connect.Disconnect, service_instance)
     return service_instance
+
+
+def uploadOVF(url=None, fileFullPath=None):
+    # fullpath = path.dirname(self.ovf_path) + '\\' + disk.path
+    # print("Uploading %s to %s." % (fullpath, url))
+    # curl_cmd = (
+    #     "curl -Ss -X POST --insecure -T %s -H 'Content-Type:application/x-vnd.vmware-streamVmdk' %s" %
+    #     (fullpath, url))
+    headers = {'Content-Type': 'application/x-vnd.vmware-streamVmdk'}
+    with open(fileFullPath, 'rb') as f:
+        r = requests.post(url=url, headers=headers, data=f, verify=False)
+    r.raise_for_status()
+    print(r.text)
 
 class vmDeploy(object):
     def __init__(self, ovfpath, name, vcpu, ram, lan, datastore, esx, vmfolder, ep, rds, demandeur, fonction, eol,
@@ -316,8 +333,6 @@ class vmDeploy(object):
                 keepalive_thread = Thread(target=keep_lease_alive, args=(lease,))
                 keepalive_thread.start()
 
-                # POST the VMDK to the host via curl on the retrieved url. Requests library would work
-                # too.
                 for disk in import_spec.fileItem:
                     for devurl in lease.info.deviceUrl:
                         if devurl.importKey == disk.deviceId:
@@ -327,10 +342,7 @@ class vmDeploy(object):
                     print("Uploading %s to %s." % (fullpath, url))
                     # TODO faire le curl dans un thread et MAJ l'avancement de l'upload dans vSphere
                     # TODO remplacer Curl par une librairie Python
-                    curl_cmd = (
-                        "curl -Ss -X POST --insecure -T %s -H 'Content-Type:application/x-vnd.vmware-streamVmdk' %s" %
-                        (fullpath, url))
-                    system(curl_cmd)
+                    uploadOVF(url=url, fileFullPath=fullpath)
                     print("Upload of %s : Done." % fullpath)
                 lease.HttpNfcLeaseComplete()
                 self.vm = lease.info.entity
@@ -522,14 +534,15 @@ class vmDeploy(object):
 def main():
     # args = get_args()
     # TODO a remplacer par args une fois le programme fonctionnel
-
+    disks = FWAP.ServerDisk(name='/dev/sdd', vg="vg_test", lvs="lv_test", partsize="105000",
+                            extra_mem_times_size=0)
     deployment = vmDeploy(ovfpath='D:\VMs\OVF\ovf_53X_64_500u1.ova\ovf_53X_64_500u1.ovf',
-                          name='a82aflr02',
+                          name='a82aflr03',
                           vcpu=1,
                           ram=1 * 1024 * 1024,
                           lan='LAN Data',
                           cluster='Cluster_Agora',
-                          datastore='CEDRE_029',
+                          datastore='CEDRE_005',
                           datacenter='Zone LAN AGORA',
                           esx='a82hhot20.agora.msanet',
                           vmfolder='_Autres',
@@ -537,8 +550,10 @@ def main():
                           rds='RXPM',
                           demandeur='Benoit BARTHELEMY',
                           fonction="tests déploiement",
-                          eol="perenne", )
-    si = connect_vcenter(vcenter='a82avce02.agora.msanet', user='c82nbar', password='********')
+                          eol="perenne",
+                          vcenter="a82avce02.agora.msanet",
+                          disks=disks)
+    si = connect_vcenter(vcenter='a82avce02.agora.msanet', user='c82nbar', password='W--Vrtw2016-1')
     res = deployment.deploy(si)
 
     return res
