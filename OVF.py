@@ -4,6 +4,7 @@ Script pour déployer une VM TAT1
 """
 import atexit
 import datetime
+import re
 import ssl
 from argparse import ArgumentParser
 from getpass import getpass
@@ -198,7 +199,6 @@ def get_objects(si, datacenter=None, datastore=None, cluster=None):
             if type(cluster_entity) == vim.ClusterComputeResource:
                 cluster_list.append(cluster_entity)
 
-
     if cluster:
         cluster_obj = get_obj_in_list(cluster, cluster_list)
     elif len(cluster_list) > 0:
@@ -258,6 +258,41 @@ def uploadOVF(url=None, fileFullPath=None):
     # Gestion des erreurs
     r.raise_for_status()
 
+
+def run_command_in_guest(vm, command, arguments, guestUser, guestPassword, si):
+    cmdspec = vim.vm.guest.ProcessManager.ProgramSpec(arguments=arguments, programPath=command)
+
+    # Credentials used to login to the guest system
+    creds = vim.vm.guest.NamePasswordAuthentication(username=guestUser, password=guestPassword)
+
+    # pid de la commande
+    pid = si.content.guestOperationsManager.processManager.StartProgramInGuest(vm=vm, auth=creds, spec=cmdspec)
+
+    # Code Retour
+    exitCode = None
+    while not exitCode:
+        exitCode = si.content.guestOperationsManager.processManager.ListProcessesInGuest(vm=vm, auth=creds, pids=pid)[
+            0].exitCode
+        sleep(1)
+
+    return exitCode
+
+
+def list_process_pids_in_guest(vm, proc_name, guestUser, guestPassword, si):
+    # Credentials used to login to the guest system
+    creds = vim.vm.guest.NamePasswordAuthentication(username=guestUser, password=guestPassword)
+    processes = si.content.guestOperationsManager.processManager.ListProcessesInGuest(vm=vm, auth=creds)
+    pids = []
+    for proc in processes:
+        if re.search(proc_name):
+            pids.append(proc.pid)
+    return pids
+
+
+def kill_process_in_guest(vm, pid, guestUser, guestPassword, si):
+    creds = vim.vm.guest.NamePasswordAuthentication(username=guestUser, password=guestPassword)
+    si.content.guestOperationsManager.processManager.TerminateProcessInGuest(vm=vm, auth=creds, pid=pid)
+
 class vmDeploy(object):
     def __init__(self, ovfpath, name, vcpu, ram, lan, datastore, esx, vmfolder, ep, rds, demandeur, fonction, eol,
                  vcenter, disks, mtl=None,
@@ -283,7 +318,7 @@ class vmDeploy(object):
         self.vcenter = vcenter
         self.mtl = mtl
 
-    def deploy(self, si):
+    def deploy(self, si, guestRootPassword='aaaaa'):
 
         self.ovf_manager = si.content.ovfManager
         ovf_object = self.ovf_manager.ParseDescriptor(self.ovf_descriptor, vim.OvfManager.ParseDescriptorParams())
@@ -336,8 +371,7 @@ class vmDeploy(object):
                             break
                     fullpath = path.dirname(self.ovf_path) + '\\' + disk.path
                     print("Uploading %s to %s." % (fullpath, url))
-                    # TODO faire le curl dans un thread et MAJ l'avancement de l'upload dans vSphere
-                    # TODO remplacer Curl par une librairie Python
+                    # TODO faire l'upload dans un thread et MAJ l'avancement de l'upload dans vSphere
                     uploadOVF(url=url, fileFullPath=fullpath)
                     print("Upload of %s : Done." % fullpath)
                 lease.HttpNfcLeaseComplete()
@@ -352,8 +386,33 @@ class vmDeploy(object):
         self._correct_cdrom(si)
         self._take_snapshot(service_instance=si, snapshot_name="Avant premier boot",
                             description="Snapshot automatique avant premier boot")
+        # Boot de la VM
+        task = self.vm.PowerOn()
+        tasks.wait_for_tasks(si, [task])
+        print("La vm %s est démarrée", (self.vm_name))
 
-        return 0
+        # Changement du MDP root
+
+        # On attend que le fichier /Agora/build/config/AttenteRootpw soit créé
+        while not run_command_in_guest(vm=self.vm, command='/usr/bin/test',
+                                       arguments="-f /Agora/build/config/AttenteRootpw",
+                                       guestUser='root', guestPassword=''):
+            sleep(3)
+
+            # On sette le MDP root
+            run_command_in_guest(vm=self.vm, command='/bin/echo',
+                                 arguments=guestRootPassword + '>/Agora/build/config/rootpw', guestUser='root',
+                                 guestPassword='')
+
+        # On kille les dialog
+        pids = list_process_pids_in_guest(vm=self.vm, proc_name='dialog', guestUser='root', guestPassword='')
+        while pids:
+            for pid in pids:
+                kill_process_in_guest(vm=self.vm, pid=pid, guestUser='root', guestPassword='')
+            sleep(1)
+            pids = list_process_pids_in_guest(vm=self.vm, proc_name='dialog', guestUser='root', guestPassword='')
+
+
 
     def _correct_cdrom(self, si):
         # Rajoute la sélection systématique du CDROM du client (si l'hôte a un CD dans le lecteur tout foire)
