@@ -16,10 +16,12 @@ from time import sleep
 import requests
 from pyVim import connect
 from pyVmomi import vim
+from pyVmomi import vmodl
 
 import FWAP
 from tools import tasks
 
+EXTENSION_KEY = "Agora";
 
 def get_args():
     """
@@ -255,43 +257,58 @@ def uploadOVF(url=None, fileFullPath=None):
     # Upload en Streaming vu la taille des images de VMs
     with open(fileFullPath, 'rb') as f:
         r = requests.post(url=url, headers=headers, data=f, verify=False)
+
     # Gestion des erreurs
     r.raise_for_status()
 
 
 def run_command_in_guest(vm, command, arguments, guestUser, guestPassword, si):
-    cmdspec = vim.vm.guest.ProcessManager.ProgramSpec(arguments=arguments, programPath=command)
-
-    # Credentials used to login to the guest system
-    creds = vim.vm.guest.NamePasswordAuthentication(username=guestUser, password=guestPassword)
-
-    # pid de la commande
-    pid = si.content.guestOperationsManager.processManager.StartProgramInGuest(vm=vm, auth=creds, spec=cmdspec)
-
-    # Code Retour
     exitCode = None
-    while not exitCode:
-        exitCode = si.content.guestOperationsManager.processManager.ListProcessesInGuest(vm=vm, auth=creds, pids=pid)[
-            0].exitCode
-        sleep(1)
+    try:
+        cmdspec = vim.vm.guest.ProcessManager.ProgramSpec(arguments=arguments, programPath=command)
+
+        # Credentials used to login to the guest system
+        creds = vim.vm.guest.NamePasswordAuthentication(username=guestUser, password=guestPassword)
+
+        # pid de la commande
+
+        pid = si.content.guestOperationsManager.processManager.StartProgramInGuest(vm=vm, auth=creds, spec=cmdspec)
+
+        # Code Retour
+        while exitCode is None:
+            exitCode = \
+                si.content.guestOperationsManager.processManager.ListProcessesInGuest(vm=vm, auth=creds, pids=pid)[
+                    0].exitCode
+            sleep(1)
+    except vim.fault.GuestComponentsOutOfDate as e:
+        print(e.msg)
 
     return exitCode
 
 
 def list_process_pids_in_guest(vm, proc_name, guestUser, guestPassword, si):
-    # Credentials used to login to the guest system
-    creds = vim.vm.guest.NamePasswordAuthentication(username=guestUser, password=guestPassword)
-    processes = si.content.guestOperationsManager.processManager.ListProcessesInGuest(vm=vm, auth=creds)
     pids = []
-    for proc in processes:
-        if re.search(proc_name):
-            pids.append(proc.pid)
+    try:
+        # Credentials used to login to the guest system
+        creds = vim.vm.guest.NamePasswordAuthentication(username=guestUser, password=guestPassword)
+        processes = si.content.guestOperationsManager.processManager.ListProcessesInGuest(vm=vm, auth=creds)
+        for proc in processes:
+            if re.search(proc_name, proc.name):
+                print('trouvé :' + proc.name)
+                pids.append(proc.pid)
+    except vim.fault.GuestComponentsOutOfDate as e:
+        print(e.msg)
+
     return pids
 
 
 def kill_process_in_guest(vm, pid, guestUser, guestPassword, si):
-    creds = vim.vm.guest.NamePasswordAuthentication(username=guestUser, password=guestPassword)
-    si.content.guestOperationsManager.processManager.TerminateProcessInGuest(vm=vm, auth=creds, pid=pid)
+    try:
+        creds = vim.vm.guest.NamePasswordAuthentication(username=guestUser, password=guestPassword)
+        si.content.guestOperationsManager.processManager.TerminateProcessInGuest(vm=vm, auth=creds, pid=pid)
+    except vim.fault.GuestComponentsOutOfDate as e:
+        print(e.msg)
+
 
 class vmDeploy(object):
     def __init__(self, ovfpath, name, vcpu, ram, lan, datastore, esx, vmfolder, ep, rds, demandeur, fonction, eol,
@@ -318,8 +335,84 @@ class vmDeploy(object):
         self.vcenter = vcenter
         self.mtl = mtl
 
-    def deploy(self, si, guestRootPassword='aaaaa'):
+    def _add_disks(self, si):
+        for disk in self.disks:
+            # print(disk)
+            # On déploie le disque de la taille des partitions + la taille des partitions sizées sur la RAM (+5% pour EXT3) + 64 M0 (pour LVM)
+            mosize = int(disk.partsize + (disk.extra_mem_times_size * (self.ram + 1) * 1024 * 105 / 100) + 64)
 
+            # On arrondi aux 100 Mo supérieur
+            if (mosize % 100) > 0:
+                morounded = mosize // 100 + 1
+            else:
+                morounded = mosize / 100
+            self.add_disk(disk_size=morounded * 100, si=si)
+
+    def _connect_switch(self, si):
+        new_vm_spec = vim.vm.ConfigSpec()
+        # Changement de vSwitch
+        vm = self.vm
+        # Ne fonctionne wue pour la première interface
+        device_change = []
+        for device in vm.config.hardware.device:
+            if isinstance(device, vim.vm.device.VirtualEthernetCard):
+                nicspec = vim.vm.device.VirtualDeviceSpec()
+                nicspec.operation = vim.vm.device.VirtualDeviceSpec.Operation.edit
+                nicspec.device = device
+                nicspec.device.wakeOnLanEnabled = True
+                nicspec.device.backing = vim.vm.device.VirtualEthernetCard.NetworkBackingInfo()
+                nicspec.device.backing.network = get_obj(si.RetrieveContent(), [vim.Network],
+                                                         self.wanted_lan_name)
+                nicspec.device.backing.deviceName = self.wanted_lan_name
+                nicspec.device.connectable = vim.vm.device.VirtualDevice.ConnectInfo()
+                nicspec.device.connectable.startConnected = True
+                nicspec.device.connectable.allowGuestControl = True
+                device_change.append(nicspec)
+                break
+        new_vm_spec.deviceChange = device_change
+        task = vm.ReconfigVM_Task(new_vm_spec)
+        task.SetTaskDescription(vmodl.LocalizableMessage(key="pyAgora_connect", message="Connecting LAN"))
+        tasks.wait_for_tasks(si, [task])
+
+    def _correct_cdrom(self, si):
+        # Rajoute la sélection systématique du CDROM du client (si l'hôte a un CD dans le lecteur tout foire)
+        virtual_cdrom_device = None
+        for dev in self.vm.config.hardware.device:
+            if isinstance(dev, vim.vm.device.VirtualCdrom):
+                virtual_cdrom_device = dev
+
+        if not virtual_cdrom_device:
+            raise RuntimeError('Virtual CDROM could not '
+                               'be found.')
+        virtual_cd_spec = vim.vm.device.VirtualDeviceSpec()
+        virtual_cd_spec.operation = vim.vm.device.VirtualDeviceSpec.Operation.edit
+        virtual_cd_spec.device = vim.vm.device.VirtualCdrom()
+        virtual_cd_spec.device.controllerKey = virtual_cdrom_device.controllerKey
+        virtual_cd_spec.device.key = virtual_cdrom_device.key
+        virtual_cd_spec.device.connectable = vim.vm.device.VirtualDevice.ConnectInfo()
+        virtual_cd_spec.device.backing = vim.vm.device.VirtualCdrom.RemotePassthroughBackingInfo()
+
+        # Allowing guest control
+        virtual_cd_spec.device.connectable.allowGuestControl = True
+
+        dev_changes = []
+        dev_changes.append(virtual_cd_spec)
+        spec = vim.vm.ConfigSpec()
+        spec.deviceChange = dev_changes
+        task = self.vm.ReconfigVM_Task(spec=spec)
+        task.SetTaskDescription(
+            vmodl.LocalizableMessage(key="pyAgora_cdrom_update", message="Connecting to client CDROM"))
+        tasks.wait_for_tasks(si, [task])
+
+    def resize(self, si, nb_cpu, ram):
+        new_vm_spec = vim.vm.ConfigSpec()
+        new_vm_spec.numCPUs = self.nb_cpu
+        new_vm_spec.memoryMB = self.ram // 1024
+        task = self.vm.ReconfigVM_Task(new_vm_spec)
+        task.SetTaskDescription(vmodl.LocalizableMessage(key="pyAgora_resize", message="Resizing VM Compute resources"))
+        tasks.wait_for_tasks(si, [task])
+
+    def _ovf_deploy(self, si):
         self.ovf_manager = si.content.ovfManager
         ovf_object = self.ovf_manager.ParseDescriptor(self.ovf_descriptor, vim.OvfManager.ParseDescriptorParams())
         self.ovf_lan_name = ovf_object.network[0].name
@@ -381,81 +474,89 @@ class vmDeploy(object):
             elif lease.state == vim.HttpNfcLease.State.error:
                 print("Lease error: " + lease.state.error)
                 exit(1)
-        self._customize(si)
-        self._add_disks()
-        self._correct_cdrom(si)
-        self._take_snapshot(service_instance=si, snapshot_name="Avant premier boot",
-                            description="Snapshot automatique avant premier boot")
-        # Boot de la VM
-        task = self.vm.PowerOn()
-        tasks.wait_for_tasks(si, [task])
-        print("La vm %s est démarrée", (self.vm_name))
 
-        # Changement du MDP root
+    def _update_metadata(self, si):
+        # TODO Créer une méthode publique pour mettre à jour un ou plusieurs attributs
+        # MAJ Attributs vSphere
+        self.vm.setCustomValue(key="Admin Systeme", value="POP")
+        self.vm.setCustomValue(key="Date creation", value=str(datetime.date.today()))
+        self.vm.setCustomValue(key="Date fin de vie", value=self.eol)
+        self.vm.setCustomValue(key="Demandeur", value=self.demandeur)
+        self.vm.setCustomValue(key="Environnement", value=self.ep)
+        self.vm.setCustomValue(key="Fonction", value=self.fonction)
+        self.vm.setCustomValue(key="LAN", value=self.wanted_lan_name)
 
-        # On attend que le fichier /Agora/build/config/AttenteRootpw soit créé
-        while not run_command_in_guest(vm=self.vm, command='/usr/bin/test',
-                                       arguments="-f /Agora/build/config/AttenteRootpw",
-                                       guestUser='root', guestPassword=''):
-            sleep(3)
+    def _update_ovf_properties(self, si):
+        new_vm_spec = vim.vm.ConfigSpec()
+        # MAJ variables OVF
+        new_vAppConfig = vim.vApp.VmConfigSpec()
+        new_vAppConfig.property = []
 
-            # On sette le MDP root
-            run_command_in_guest(vm=self.vm, command='/bin/echo',
-                                 arguments=guestRootPassword + '>/Agora/build/config/rootpw', guestUser='root',
-                                 guestPassword='')
-
-        # On kille les dialog
-        pids = list_process_pids_in_guest(vm=self.vm, proc_name='dialog', guestUser='root', guestPassword='')
-        while pids:
-            for pid in pids:
-                kill_process_in_guest(vm=self.vm, pid=pid, guestUser='root', guestPassword='')
-            sleep(1)
-            pids = list_process_pids_in_guest(vm=self.vm, proc_name='dialog', guestUser='root', guestPassword='')
-
-
-
-    def _correct_cdrom(self, si):
-        # Rajoute la sélection systématique du CDROM du client (si l'hôte a un CD dans le lecteur tout foire)
-        virtual_cdrom_device = None
-        for dev in self.vm.config.hardware.device:
-            if isinstance(dev, vim.vm.device.VirtualCdrom):
-                virtual_cdrom_device = dev
-
-        if not virtual_cdrom_device:
-            raise RuntimeError('Virtual CDROM could not '
-                               'be found.')
-        virtual_cd_spec = vim.vm.device.VirtualDeviceSpec()
-        virtual_cd_spec.operation = vim.vm.device.VirtualDeviceSpec.Operation.edit
-        virtual_cd_spec.device = vim.vm.device.VirtualCdrom()
-        virtual_cd_spec.device.controllerKey = virtual_cdrom_device.controllerKey
-        virtual_cd_spec.device.key = virtual_cdrom_device.key
-        virtual_cd_spec.device.connectable = vim.vm.device.VirtualDevice.ConnectInfo()
-        virtual_cd_spec.device.backing = vim.vm.device.VirtualCdrom.RemotePassthroughBackingInfo()
-
-        # Allowing guest control
-        virtual_cd_spec.device.connectable.allowGuestControl = True
-
-        dev_changes = []
-        dev_changes.append(virtual_cd_spec)
-        spec = vim.vm.ConfigSpec()
-        spec.deviceChange = dev_changes
-        task = self.vm.ReconfigVM_Task(spec=spec)
-        tasks.wait_for_tasks(si, [task])
-
-    def _add_disks(self):
-        for disk in self.disks:
-            print(disk)
-            # On déploie le disque de la taille des partitions + la taille des partitions sizées sur la RAM (+5% pour EXT3) + 64 M0 (pour LVM)
-            mosize = int(disk.partsize + (disk.extra_mem_times_size * (self.ram + 1) * 1024 * 105 / 100) + 64)
-
-            # On arrondi aux 100 Mo supérieur
-            if (mosize % 100) > 0:
-                morounded = mosize // 100 + 1
+        for ovf_property in self.vm.config.vAppConfig.property:
+            updated_spec = vim.vApp.PropertySpec()
+            updated_spec.info = ovf_property
+            updated_spec.operation = vim.option.ArrayUpdateSpec.Operation.edit
+            if ovf_property.id == 'EP':
+                updated_spec.info.value = self.ep
+            elif ovf_property.id == 'hostname':
+                updated_spec.info.value = self.vm_name
+            elif ovf_property.id == 'RDS':
+                updated_spec.info.value = self.rds
+            elif ovf_property.id == 'url_referentiel':
+                if self.mtl:
+                    updated_spec.info.value = 'http://' + self.mtl + '/repo/agora/scripts'
+                else:
+                    if self.ep == 'D' or self.ep == 'E':
+                        updated_spec.info.value = 'http://a82amtl01.agora.msanet/repo/agora/scripts'
+                    else:
+                        updated_spec.info.value = 'http://a82amtl02.agora.msanet/repo/agora/scripts'
+            elif ovf_property.id == 'MTL_HOST_REPO':
+                if self.mtl:
+                    updated_spec.info.value = self.mtl
+                else:
+                    if self.ep == 'D' or self.ep == 'E':
+                        updated_spec.info.value = 'a82amtl01.agora.msanet'
+                    else:
+                        updated_spec.info.value = 'a82amtl02.agora.msanet'
             else:
-                morounded = mosize / 100
-            self.add_disk(disk_size=morounded * 100)
+                continue
+            new_vAppConfig.property.append(updated_spec)
+        new_vm_spec.vAppConfig = new_vAppConfig
+        new_vm_spec.vAppConfigRemoved = False
 
-    def add_disk(self, disk_size, disk_type=''):
+        task = self.vm.ReconfigVM_Task(new_vm_spec)
+        task.SetTaskDescription(vmodl.LocalizableMessage(key="pyAgora_writeovf", message="Writing OVF values"))
+        tasks.wait_for_tasks(si, [task])
+
+    def _update_root_pw_on_first_boot(self, newRootPassword, si):
+        # Changement du MDP root
+        # On attend que le fichier /Agora/build/config/AttenteRootpw soit créé
+        while True:
+            try:
+                if 0 == run_command_in_guest(vm=self.vm, command='/usr/bin/test',
+                                             arguments="-f /Agora/build/config/AttenteRootpw",
+                                             guestUser='root', guestPassword='', si=si):
+                    break
+            # On catche l'exception pour éviter de planter en raison des tools pas lancés
+            except (vim.fault.GuestOperationsUnavailable):
+                pass
+            sleep(3)
+        # On sette le MDP root
+        run_command_in_guest(vm=self.vm, command='/bin/echo',
+                             arguments=newRootPassword + '>/Agora/build/config/rootpw', guestUser='root',
+                             guestPassword='', si=si)
+        # On kille les dialog
+        pids = list_process_pids_in_guest(vm=self.vm, proc_name='dialog', guestUser='root', guestPassword='', si=si)
+        while True:
+            if len(pids) == 0:
+                break
+            for pid in pids:
+                print("Kill du dialog : " + pid)
+                kill_process_in_guest(vm=self.vm, pid=pid, guestUser='root', guestPassword='', si=si)
+            sleep(1)
+            pids = list_process_pids_in_guest(vm=self.vm, proc_name='dialog', guestUser='root', guestPassword='', si=si)
+
+    def add_disk(self, disk_size, si, disk_type=''):
         """
 
         :param disk_size: Taille du disque en Mo
@@ -493,104 +594,49 @@ class vmDeploy(object):
         disk_spec.device.controllerKey = controller.key
         dev_changes.append(disk_spec)
         spec.deviceChange = dev_changes
-        vm.ReconfigVM_Task(spec=spec)
-        print("Disque /dev/sd%s de %s Mo ajouté à %s" % (chr(ord('a') + unit_number), disk_size, self.vm_name))
+        task = vm.ReconfigVM_Task(spec=spec)
+        task.SetTaskDescription(vmodl.LocalizableMessage(key="pyAgora_disk", message="Adding disks"))
+        tasks.wait_for_tasks(si, [task])
         self.deployed_disks += 1
 
-    def _customize(self, service_instance):
-        new_vm_spec = vim.vm.ConfigSpec()
-        new_vm_spec.numCPUs = self.nb_cpu
-        new_vm_spec.memoryMB = self.ram // 1024
+    def boot(self, si):
+        # Boot de la VM
+        task = self.vm.PowerOn()
+        tasks.wait_for_tasks(si, [task])
 
-        # Changement de vSwitch
+    def deploy(self, si, guestRootPassword='aaaaa'):
+        self._ovf_deploy(si=si)
+        self.resize(nb_cpu=self.nb_cpu, ram=self.ram // 1024, si=si)
+        self._update_metadata(si=si)
+        self._update_ovf_properties(si=si)
+        self._connect_switch(si=si)
+        self._add_disks(si=si)
+        self._correct_cdrom(si=si)
+        self.take_snapshot(service_instance=si, snapshot_name="Avant premier boot",
+                           description="Snapshot automatique avant premier boot")
+        self.boot(si=si)
+        self._update_root_pw_on_first_boot(newRootPassword=guestRootPassword, si=si)
+        self.upgrade_tools(si=si)
+
+    def take_snapshot(self, service_instance, snapshot_name="Snapshot", description=None, dumpMemory=False,
+                      quiesce=False):
         vm = self.vm
-        # This code is for changing only one Interface. For multiple Interface
-        # Iterate through a loop of network names.
-        device_change = []
-        for device in vm.config.hardware.device:
-            if isinstance(device, vim.vm.device.VirtualEthernetCard):
-                nicspec = vim.vm.device.VirtualDeviceSpec()
-                nicspec.operation = vim.vm.device.VirtualDeviceSpec.Operation.edit
-                nicspec.device = device
-                nicspec.device.wakeOnLanEnabled = True
-                nicspec.device.backing = vim.vm.device.VirtualEthernetCard.NetworkBackingInfo()
-                nicspec.device.backing.network = get_obj(service_instance.RetrieveContent(), [vim.Network],
-                                                         self.wanted_lan_name)
-                nicspec.device.backing.deviceName = self.wanted_lan_name
-                nicspec.device.connectable = vim.vm.device.VirtualDevice.ConnectInfo()
-                nicspec.device.connectable.startConnected = True
-                nicspec.device.connectable.allowGuestControl = True
-                device_change.append(nicspec)
-                break
-        new_vm_spec.deviceChange = device_change
-
-        # MAJ Attributs vSphere
-        self.vm.setCustomValue(key="Admin Systeme", value="POP")
-        self.vm.setCustomValue(key="Date creation", value=str(datetime.date.today()))
-        self.vm.setCustomValue(key="Date fin de vie", value=self.eol)
-        self.vm.setCustomValue(key="Demandeur", value=self.demandeur)
-        self.vm.setCustomValue(key="Environnement", value=self.ep)
-        self.vm.setCustomValue(key="Fonction", value=self.fonction)
-        self.vm.setCustomValue(key="LAN", value=self.wanted_lan_name)
-
-        # MAJ variables OVF
-        new_vAppConfig = vim.vApp.VmConfigSpec()
-        new_vAppConfig.property = []
-
-        for ovf_property in vm.config.vAppConfig.property:
-            updated_spec = vim.vApp.PropertySpec()
-            updated_spec.info = ovf_property
-            updated_spec.operation = vim.option.ArrayUpdateSpec.Operation.edit
-            if ovf_property.id == 'EP':
-                updated_spec.info.value = self.ep
-            elif ovf_property.id == 'hostname':
-                updated_spec.info.value = self.vm_name
-            elif ovf_property.id == 'RDS':
-                updated_spec.info.value = self.rds
-            elif ovf_property.id == 'url_referentiel':
-                if self.mtl:
-                    updated_spec.info.value = 'http://' + self.mtl + '/repo/agora/scripts'
-                else:
-                    if self.ep == 'D' or self.ep == 'E':
-                        updated_spec.info.value = 'http://a82amtl01.agora.msanet/repo/agora/scripts'
-                    else:
-                        updated_spec.info.value = 'http://a82amtl02.agora.msanet/repo/agora/scripts'
-            elif ovf_property.id == 'MTL_HOST_REPO':
-                if self.mtl:
-                    updated_spec.info.value = self.mtl
-                else:
-                    if self.ep == 'D' or self.ep == 'E':
-                        updated_spec.info.value = 'a82amtl01.agora.msanet'
-                    else:
-                        updated_spec.info.value = 'a82amtl02.agora.msanet'
-            else:
-                continue
-            new_vAppConfig.property.append(updated_spec)
-        new_vm_spec.vAppConfig = new_vAppConfig
-        new_vm_spec.vAppConfigRemoved = False
-
-        task = vm.ReconfigVM_Task(new_vm_spec)
+        task = vm.CreateSnapshot(snapshot_name, description, dumpMemory, quiesce)
         tasks.wait_for_tasks(service_instance, [task])
 
-        print("Successfully reconfigured VM !")
-        return 0
-
-    def _take_snapshot(self, service_instance, snapshot_name="Snapshot", description=None, dumpMemory=False,
-                       quiesce=False):
-        vm = self.vm
-        try:
-            task = vm.CreateSnapshot(snapshot_name, description, dumpMemory, quiesce)
-            tasks.wait_for_tasks(service_instance, [task])
-        except:
-            raise
-        print("Snapshot " + snapshot_name + " créé !")
+    def upgrade_tools(self, si):
+        # MAJ des tools
+        task = self.vm.UpgradeVM()
+        tasks.wait_for_tasks(si, [task])
 
 
 def main():
     # args = get_args()
     # TODO a remplacer par args une fois le programme fonctionnel
-    disks = FWAP.ServerDisk(name='/dev/sdd', vg="vg_test", lvs="lv_test", partsize="105000",
-                            extra_mem_times_size=0)
+    disks = []
+    disks.append(FWAP.ServerDisk(name='/dev/sde', vg="vg_test", lvs="lv_test", partsize=1024,
+                                 extra_mem_times_size=0))
+
     deployment = vmDeploy(ovfpath='D:\VMs\OVF\ovf_53X_64_500u1.ova\ovf_53X_64_500u1.ovf',
                           name='a82aflr03',
                           vcpu=1,
@@ -605,7 +651,7 @@ def main():
                           rds='RXPM',
                           demandeur='Benoit BARTHELEMY',
                           fonction="tests déploiement",
-                          eol="perenne",
+                          eol="Temporaire",
                           vcenter="a82avce02.agora.msanet",
                           disks=disks)
     si = connect_vcenter(vcenter='a82avce02.agora.msanet', user='c82nbar', password='W--Vrtw2016-1')
