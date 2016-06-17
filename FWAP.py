@@ -10,6 +10,8 @@ from tkinter import ttk
 
 from lxml import etree
 
+import tools.autocombo
+
 # Correspondance Image DVD/OS
 os = {
     "rhel_5.3_DVD": "RHEL 5.3",
@@ -62,6 +64,7 @@ class FwapFile(object):
 
         :param parent: Element auquel ratacher le TreeView
         :param label: Titre du treeView
+        :param name: Nom du treeview
         :param type: Type d'élément à sélectionner (serveur|ep|rds)
         :return: treeView généré
         """
@@ -90,7 +93,19 @@ class FwapFile(object):
                             tree.insert(parent=rds_id, index='end', text=server_entry.get('SERVERNAME'))
         return tree
 
+    def get_tk_combobox(self, parent):
+        """
 
+        :param parent: Element auquel ratacher la combobox
+        :return: combobox générée
+        """
+        combo = tools.autocombo.AutocompleteCombobox(parent)
+        xpath_string = '/FWAP/Environnement/RoleServeur/Cluster/MachineVirtuelle/@SERVERNAME'
+        xmltree = etree.parse(self.url)
+        serverlist = xmltree.xpath(xpath_string).sort()
+        combo.set_completion_list(serverlist)
+
+        return combo
 class Server(object):
     def __init__(self):
         return
