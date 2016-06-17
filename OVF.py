@@ -21,7 +21,6 @@ from pyVmomi import vmodl
 import FWAP
 from tools import tasks
 
-EXTENSION_KEY = "Agora";
 
 def get_args():
     """
