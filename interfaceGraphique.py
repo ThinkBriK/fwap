@@ -66,10 +66,8 @@ class MyApp(object):
 
         self.tabs = []
 
-        self.tabs.append(ConfigTab(app=self, notebook=nb))
-        self.tabs.append(VcenterTab(app=self, notebook=nb))
-        self.tabs.append(FwapTab(app=self, notebook=nb))
         self.tabs.append(RequestTab(app=self, notebook=nb))
+        self.tabs.append(VcenterTab(app=self, notebook=nb))
         self.tabs.append(VirtualInfraTab(app=self, notebook=nb))
 
     def updateParams(self, params_dict):
@@ -154,34 +152,248 @@ class AppTab(ttk.Frame):
         pass
 
 
-class ConfigTab(AppTab):
+class LoginMbox(ttk.Frame):
+    def __init__(self, parent):
+        ttk.Frame.__init__(parent)
+
+    def _onSetViCredentials(self, vcenter, usr, passwd):
+        try:
+            si = OVF.connect_vcenter(vcenter=vcenter.get(), user=usr.get(), password=passwd.get())
+        except:
+            print(sys.exc_info()[0])
+            return
+        self.parent.app.updateParams(params_dict={'vcenter': vcenter.get(),
+                                                  'password': passwd.get(),
+                                                  'user': usr.get(),
+                                                  'si': si})
+        self.parent._populate_vi_tab()
+
+
+class RequestTab(AppTab):
     def __init__(self, app, notebook):
-        super().__init__(app=app, notebook=notebook, name='config')
+        super().__init__(app=app, notebook=notebook, name='demande')
 
         label_ovf_path = ttk.Label(self, text="Répertoire racine des OVF")
-        label_ovf_path.grid(row=0, column=0, sticky='W')
-        ovf_path = ttk.Entry(self, width=60)
-        ovf_path.insert(0, 'D:\VMs\OVF')
-        ovf_path.grid(row=0, column=1, sticky='NESW')
+        label_ovf_path.grid(row=0, column=0, sticky='E')
+        self.ovf_path = ttk.Entry(self, width=60)
+        self.ovf_path.insert(0, 'D:\VMs\OVF')
+        self.ovf_path.grid(row=0, column=1, columnspan=3, sticky='NESW')
 
         label_fwap_path = ttk.Label(self, text="URL du FWAP")
         label_fwap_path.grid(row=1, column=0, sticky='E')
-        fwap_path = ttk.Combobox(self, width=60, state='normal', values=FWAP_FILES)
-        fwap_path.current(0)
-        # fwap_path.insert(0, DEFAULT_FWAP_FILE)
-        fwap_path.grid(row=1, column=1, sticky='W')
 
-        boutonOK = ttk.Button(self, text="OK",
-                              command=lambda: self._onUpdateConfig(ovf_path=ovf_path.get(), fwap_path=fwap_path.get()))
-        boutonOK.grid(row=3, column=1, sticky='e', pady=5)
+        self.fwap_path = ttk.Combobox(self, width=60, state='normal', values=FWAP_FILES)
+        self.fwap_path.current(0)
+        self.fwap_path.bind("<<ComboboxSelected>>", self._onUpdateFwapFile)
+        self.fwap_path.grid(row=1, column=1, columnspan=3, sticky='W')
 
-        notebook.add(self, text='Configuration', padding=2)
+        label_servCombo = ttk.Label(self, text="Choisissez un serveur")
+        label_servCombo.grid(row=2, column=0, sticky='E')
+
+        self.servCombo = app.fwapfile.get_tk_combobox(parent=self, width=60, state='normal')
+        self.servCombo.grid(row=2, column=1, columnspan=3, sticky='W')
+
+        sep1 = ttk.Separator(self, orient='horizontal')
+        sep1.grid(row=3, column=0, columnspan=5, sticky='NSEW', padx=2, pady=2)
+
+        label_demandeur = ttk.Label(self, text="Demandeur")
+        label_demandeur.grid(row=4, column=0, sticky='E')
+        self.demandeur = ttk.Entry(self, width=60)
+        self.demandeur.grid(row=4, column=1, columnspan=3, sticky='NSEW')
+
+        label_fonction = ttk.Label(self, text="Fonction")
+        label_fonction.grid(row=5, column=0, sticky='E')
+        self.fonction = ttk.Entry(self, width=60)
+        self.fonction.grid(row=5, column=1, columnspan=3, sticky='NSEW')
+
+        label_eol = ttk.Label(self, text="Fin de vie")
+        label_eol.grid(row=6, column=0, sticky='E')
+        self.eol = ttk.Entry(self, width=30)
+        self.eol.insert(0, 'Perenne')
+        self.eol.grid(row=6, column=1, columnspan=3, sticky='NSEW')
+
+        sep2 = ttk.Separator(self, orient='horizontal')
+        sep2.grid(row=7, column=0, columnspan=5, sticky='NSEW', padx=2, pady=2)
+
+        label_vcpu = ttk.Label(self, text="vCPUs")
+        label_vcpu.grid(row=8, column=0, sticky='E')
+        self.vcpus = Tk.Spinbox(self, from_=1, to=12, width=2)
+        self.vcpus.value = 1
+        self.vcpus.grid(row=8, column=1, sticky='NSEW')
+
+        label_ram = ttk.Label(self, text="RAM (en GB)")
+        label_ram.grid(row=8, column=2, sticky='E')
+        self.ram = Tk.Spinbox(self, from_=1, to=64, width=2)
+        self.ram.value = 1
+        self.ram.grid(row=8, column=3, sticky='NSEW')
+
+        sep3 = ttk.Separator(self, orient='horizontal')
+        sep3.grid(row=9, column=0, columnspan=4, sticky='NSEW', padx=2, pady=2)
+
+        boutonPopupVC = ttk.Button(self, text="Login vCenter", command="")
+        boutonPopupVC.grid(row=10, column=0, columnspan=4, sticky='NSEW', pady=5)
+
+        notebook.add(self, text='Demande', padding=2)
+
+    def _onUpdateFwapFile(self, event):
+        fwapfile = FWAP.FwapFile(self.fwap_path.get())
+        self.app.updateParams(params_dict={'fwapfile': fwapfile})
+
+        servlist = fwapfile.get_serverlist()
+        if not servlist is None:
+            self.servCombo.set_completion_list(servlist)
+
+    def _onRequestValidate(self):
+        self.app.updateParams(params_dict={'ovf_path': self.ovf_path,
+                                           'demandeur': self.demandeur.get(),
+                                           'fonction': self.fonction.get(),
+                                           'eol': self.eol.get(),
+                                           'vcpus': self.vcpus.get(),
+                                           'ram': self.ram.get()
+                                           })
+        self.app.serverinfo = self.app.fwapfile.parse(servername=self.servCombo.get())[0]
+        self.app.validate()
 
     def _onUpdateConfig(self, ovf_path, fwap_path):
         self.app.updateParams(params_dict={'ovf_path': ovf_path, 'fwapfile': FWAP.FwapFile(fwap_path)})
-        for tab in self.app.tabs:
-            if isinstance(tab, FwapTab):
-                tab.refresh()
+
+    def populateViTree(self):
+        frame = self
+        parent = self.app
+        tree = ttk.Treeview(frame, selectmode='browse', columns=['RAM', 'CPU'])
+        tree.column("#0", minwidth=30)
+        tree.heading("#0", text="Sélectionner un Hôte")
+        tree.column("RAM", minwidth=10)
+        tree.heading("RAM", text="RAM Utilisée")
+        tree.column("CPU", minwidth=10)
+        tree.heading("CPU", text="CPU Utilisée")
+        content = parent.si.RetrieveContent()
+        # TODO Remplacer l'alimentation de l'arbre vmware par une fonction récursive
+
+        # Datacenters
+        for datacenter_element in content.rootFolder.childEntity:
+            self._build_host_tree(tree=tree, parentid='', element=datacenter_element)
+        tree.grid(row=0, rowspan=3, column=0, sticky='NESW')
+
+        handler = lambda: self._onChooseDeployServer(tree=tree)
+        btn = ttk.Button(frame, text="OK", command=handler)
+        btn.grid(row=3, column=0, sticky='S', pady=5)
+
+    def _build_host_tree(self, tree, parentid, element):
+        childlist = []
+        elementid = None
+        if type(element) == pyVmomi.types.vim.Datacenter:
+            elementid = tree.insert(parent=parentid, index='end', text=element.name, values=['', ''])
+            childlist = element.hostFolder.childEntity
+        elif type(element) == pyVmomi.types.vim.ClusterComputeResource:
+            elementid = tree.insert(parent=parentid, index='end', text=element.name, values=['', ''])
+            childlist = element.host
+        elif type(element) == pyVmomi.types.vim.ComputeResource:
+            # On ne fait pas apparaitre les resource Groups dans l'arbre
+            elementid = parentid
+            childlist = element.host
+        elif type(element) == pyVmomi.types.vim.Folder:
+            # On ne fait pas apparaitre des folder host des datacenters
+            if element.name != 'host':
+                elementid = tree.insert(parent=parentid, index='end', text=element.name, values=['', ''])
+                childlist = element.childEntity
+        elif type(
+                element) == pyVmomi.types.vim.HostSystem and element.runtime.connectionState == 'connected':
+            cpu_usage_mhz = element.summary.quickStats.overallCpuUsage
+            total_mhz = element.summary.hardware.numCpuCores * element.summary.hardware.cpuMhz
+            mem_usage_mo = element.summary.quickStats.overallMemoryUsage
+            total_mem_mo = element.summary.hardware.memorySize / 1024 / 1024
+            elementid = tree.insert(parent=parentid, index='end', text=element.name,
+                                    values=["%4.2f Go (%3.2f %%)" % (mem_usage_mo / 1024,
+                                                                     mem_usage_mo / total_mem_mo * 100),
+                                            "%3.2f Ghz (%3.2f %%)" % (
+                                                cpu_usage_mhz / 1024,
+                                                cpu_usage_mhz / total_mhz * 100)])
+        for child in childlist:
+            self._build_host_tree(tree, elementid, child)
+
+    def _onChooseDeployServer(self, tree):
+        choix = tree.focus()
+        app = self.app
+
+        # On vérifie qu'on soit bien sur un serveur (feuille)
+        if len(tree.get_children(choix)) == 0:
+            app.esx = tree.item(choix)['text']
+            app.validate()
+            self.populateDetails()
+
+    def populateDetails(self):
+        frame = self
+        app = self.app
+
+        content = app.si.RetrieveContent()
+        host = OVF.get_obj(content, pyVmomi.vim.HostSystem, app.esx)
+
+        # On détermine le DC de l'hôte
+        datacenter_element = host.parent
+        while type(datacenter_element) != pyVmomi.types.vim.Datacenter:
+            datacenter_element = datacenter_element.parent
+
+        # Ajout d'un séparateur
+        separator = ttk.Separator(frame, orient='vertical')
+        separator.grid(row=0, column=1, rowspan=4, sticky='NSEW', padx=3)
+
+        # Récupération des LAN accessibles depuis l'hôte
+        lan_label = ttk.Label(frame, text="Choisissez le réseau")
+        lan_label.grid(row=0, column=2, sticky="W", padx=3)
+        lan_combo = ttk.Combobox(frame, values=[portgroup.spec.name for portgroup in host.config.network.portgroup],
+                                 width=30, name='lanCombo')
+        lan_combo.grid(row=0, column=3, sticky="NSEW", padx=3)
+
+        # Récupération des Datastores accessibles depuis l'hôte
+        datastore_label = ttk.Label(frame, text="Choisissez le datastore")
+        datastore_label.grid(row=1, column=2, sticky="W", padx=3)
+        display_choices = []
+        datastores_tab = []
+
+        for datastore in host.datastore:
+            valeur = datastore.info.name + " (" + str(int(datastore.info.freeSpace / 1024 / 1024 / 1024)) + " Go libre)"
+            display_choices.append(valeur)
+            datastores_tab.append(datastore.info.name)
+        datastore_combo = ttk.Combobox(frame, values=display_choices, width=30, name='datastoreCombo')
+        datastore_combo.grid(row=1, column=3, sticky="NSEW", padx=3)
+
+        # Choix du dossier de la VM
+        folder_label = ttk.Label(frame, text="Choisissez le dossier")
+        folder_label.grid(row=2, column=2, sticky="W", padx=3)
+        tree = ttk.Treeview(frame, selectmode='browse', name='folderTree')
+        tree.column('#0', minwidth=30)
+        tree.heading('#0', text="Sélectionner un Dossier")
+        if type(datacenter_element) == pyVmomi.types.vim.Datacenter:
+            dc_id = tree.insert(parent='', index='end', text=datacenter_element.name, open=True)
+            for vmFolder_element in datacenter_element.vmFolder.childEntity:
+                self._build_folder_tree(tree, dc_id, vmFolder_element)
+        tree.grid(row=2, column=3, sticky="NSEW", padx=3)
+
+        # Bouton de validation
+        handler = lambda: self._onViInfoChosen(datastore_list=datastores_tab)
+        btn = ttk.Button(frame, text="OK", command=handler)
+        btn.grid(row=3, column=3, sticky='S', pady=5, padx=3)
+
+    def _build_folder_tree(self, tree, parentid, element):
+        if type(element) == pyVmomi.types.vim.Folder:
+            folderid = tree.insert(parent=parentid, index='end', text=element.name, values=[element._moId])
+            for child in element.childEntity:
+                self._build_folder_tree(tree, folderid, child)
+
+    def _onViInfoChosen(self, datastore_list):
+        frame = self
+        app = self.app
+        params = {}
+        # Récupération du LAN
+        params['lan'] = frame.children['lanCombo']['values'][frame.children['lanCombo'].current()]
+        # Récupération du Datastore
+        params['datastore'] = datastore_list[frame.children['datastoreCombo'].current()]
+        # Récupération du Folder
+        tree = frame.children['folderTree']
+        choix = tree.focus()
+        params['vmfolder'] = pyVmomi.types.vim.Folder(tree.item(choix)['values'][0])
+        app.updateParams(params)
 
 
 class VcenterTab(AppTab):
@@ -231,22 +443,6 @@ class VcenterTab(AppTab):
                 tab.populateViTree()
                 break
 
-
-class FwapTab(AppTab):
-    def __init__(self, app, notebook):
-        super().__init__(app=app, notebook=notebook, name='fwap')
-        if hasattr(app, 'fwapfile'):
-            tree = app.fwapfile.get_tk_tree(parent=self, label="Choisissez un serveur", type='serveur', name='fwaptree')
-        else:
-            tree = ttk.Treeview(master=self, name='fwaptree')
-        tree.grid(row=0, column=0)
-
-        handler = lambda: self._onFwapSelect(tree)
-        boutonOK = ttk.Button(self, text="OK", command=handler)
-        boutonOK.grid(row=1, column=0, sticky='S', pady=5)
-
-        notebook.add(self, text='FWAP', padding=2)
-
     def refresh(self):
         app = self.app
         tree = self.children['fwaptree']
@@ -272,53 +468,6 @@ class FwapTab(AppTab):
             name = tree.item(choix)['text']
             app.serverinfo = app.fwapfile.parse(servername=name)[0]
             app.validate()
-
-
-class RequestTab(AppTab):
-    def __init__(self, app, notebook):
-        super().__init__(app=app, notebook=notebook, name='request')
-        handler = lambda: app.updateParams(
-            params_dict={'demandeur': demandeur.get(), 'fonction': fonction.get(), 'eol': eol.get(),
-                         'vcpus': vcpus.get(), 'ram': ram.get()})
-
-        label_demandeur = ttk.Label(self, text="Demandeur")
-        label_demandeur.grid(row=0, column=0, columnspan=2, sticky='W')
-        demandeur = ttk.Entry(self, width=30)
-        demandeur.grid(row=0, column=2, columnspan=3, sticky='W')
-
-        label_fonction = ttk.Label(self, text="Fonction")
-        label_fonction.grid(row=1, column=0, columnspan=2, sticky='W')
-        fonction = ttk.Entry(self, width=30)
-        fonction.grid(row=1, column=2, columnspan=3, sticky='W')
-
-        label_eol = ttk.Label(self, text="Fin de vie")
-        label_eol.grid(row=2, column=0, columnspan=2, sticky='W')
-        eol = ttk.Entry(self, width=30)
-        eol.insert(0, 'Perenne')
-        eol.grid(row=2, column=2, columnspan=3, sticky='W')
-
-        sep = ttk.Separator(self, orient='horizontal')
-        sep.grid(row=3, column=0, columnspan=5, sticky='NSEW', padx=2, pady=2)
-
-        label_vcpu = ttk.Label(self, text="vCPUs")
-        label_vcpu.grid(row=4, column=0, columnspan=2, sticky='NSEW')
-        vcpus = Tk.Spinbox(self, from_=1, to=12, width=2)
-        vcpus.value = 1
-        vcpus.grid(row=4, column=2, sticky='NSEW')
-
-        label_ram = ttk.Label(self, text="RAM (en GB)")
-        label_ram.grid(row=4, column=3, sticky='NSEW')
-        ram = Tk.Spinbox(self, from_=1, to=64, width=2)
-        ram.value = 1
-        ram.grid(row=4, column=4, sticky='NSEW')
-
-        sep2 = ttk.Separator(self, orient='horizontal')
-        sep2.grid(row=6, column=0, columnspan=5, sticky='NSEW', padx=2, pady=2)
-
-        btn = ttk.Button(self, text="OK", command=handler)
-        btn.grid(row=7, column=0, columnspan=5, sticky='S', pady=5)
-
-        notebook.add(self, text='Demande', padding=2)
 
 
 class VirtualInfraTab(AppTab):

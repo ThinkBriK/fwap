@@ -93,19 +93,26 @@ class FwapFile(object):
                             tree.insert(parent=rds_id, index='end', text=server_entry.get('SERVERNAME'))
         return tree
 
-    def get_tk_combobox(self, parent):
+    def get_tk_combobox(self, parent, **kwargs):
         """
 
         :param parent: Element auquel ratacher la combobox
         :return: combobox générée
         """
-        combo = tools.autocombo.AutocompleteCombobox(parent)
-        xpath_string = '/FWAP/Environnement/RoleServeur/Cluster/MachineVirtuelle/@SERVERNAME'
-        xmltree = etree.parse(self.url)
-        serverlist = xmltree.xpath(xpath_string).sort()
-        combo.set_completion_list(serverlist)
+        combo = tools.autocombo.AutocompleteCombobox(parent, **kwargs)
+        serverlist = self.get_serverlist()
+        if not serverlist is None:
+            combo.set_completion_list(serverlist)
 
         return combo
+
+    def get_serverlist(self):
+
+        xpath_string = '/FWAP/Environnement/RoleServeur/Cluster/MachineVirtuelle/@SERVERNAME'
+        xmltree = etree.parse(self.url)
+        return sorted(xmltree.xpath(xpath_string))
+
+
 class Server(object):
     def __init__(self):
         return
