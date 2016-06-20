@@ -152,9 +152,32 @@ class AppTab(ttk.Frame):
         pass
 
 
-class LoginMbox(ttk.Frame):
-    def __init__(self, parent):
-        ttk.Frame.__init__(parent)
+class LoginMbox(object):
+    def __init__(self, caller_frame):
+        self.root = Tk.Tk()
+        self.root.title("Login vSphere")
+        self.frame = ttk.Frame(master=self.root, name='login')
+
+        self.caller_frame = caller_frame
+        label_vcenter = ttk.Label(self.frame, text="vCenter")
+        label_vcenter.grid(row=0, column=0, sticky='W')
+        vcenter = ttk.Combobox(self.frame, values=("a82avce02.agora.msanet", "a82avce96.agora.msanet"), width=30)
+        vcenter.set("a82avce02.agora.msanet")
+        vcenter.grid(row=0, column=1, sticky='NESW')
+
+        label_usr = ttk.Label(self.frame, text="User vCenter")
+        label_usr.grid(row=1, column=0, sticky='W')
+        usr = ttk.Entry(self.frame, width=30)
+        usr.grid(row=1, column=1, sticky='NESW')
+
+        label_pwd = ttk.Label(self.frame, text="Password vCenter")
+        label_pwd.grid(row=2, column=0, sticky='W')
+        passwd = ttk.Entry(self.frame, show="*", width=30)
+        passwd.grid(row=2, column=1, sticky='NESW')
+
+        btn = ttk.Button(self.frame, text="OK", command=lambda: self._onSetViCredentials(vcenter, usr, passwd))
+        btn.grid(row=3, column=1, sticky='S', pady=5)
+        self.frame.grid()
 
     def _onSetViCredentials(self, vcenter, usr, passwd):
         try:
@@ -162,11 +185,13 @@ class LoginMbox(ttk.Frame):
         except:
             print(sys.exc_info()[0])
             return
-        self.parent.app.updateParams(params_dict={'vcenter': vcenter.get(),
-                                                  'password': passwd.get(),
-                                                  'user': usr.get(),
-                                                  'si': si})
-        self.parent._populate_vi_tab()
+        self.caller_frame.app.updateParams(params_dict={'vcenter': vcenter.get(),
+                                                        'password': passwd.get(),
+                                                        'user': usr.get(),
+                                                        'si': si})
+        self.caller_frame.vcLoginOK()
+        self.root.destroy()
+
 
 
 class RequestTab(AppTab):
@@ -230,10 +255,16 @@ class RequestTab(AppTab):
         sep3 = ttk.Separator(self, orient='horizontal')
         sep3.grid(row=9, column=0, columnspan=4, sticky='NSEW', padx=2, pady=2)
 
-        boutonPopupVC = ttk.Button(self, text="Login vCenter", command="")
-        boutonPopupVC.grid(row=10, column=0, columnspan=4, sticky='NSEW', pady=5)
+        self.boutonPopupVC = ttk.Button(self, text="Login vCenter", command=self._onVcPopup)
+        self.boutonPopupVC.grid(row=10, column=0, columnspan=4, sticky='NSEW', pady=5)
 
         notebook.add(self, text='Demande', padding=2)
+
+    def vcLoginOK(self):
+        self.boutonPopupVC.config(text="Logged in to VC", state=Tk.DISABLED)
+
+    def _onVcPopup(self):
+        LoginMbox(self)
 
     def _onUpdateFwapFile(self, event):
         fwapfile = FWAP.FwapFile(self.fwap_path.get())
