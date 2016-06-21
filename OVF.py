@@ -548,9 +548,10 @@ class vmDeploy(object):
         pids = list_process_pids_in_guest(vm=self.vm, proc_name='dialog', guestUser='root', guestPassword='', si=si)
         while True:
             if len(pids) == 0:
-                break
+                break  # todo semble tourner en boucle infinie
             for pid in pids:
-                print("Kill du dialog : " + pid)
+                # Todo confirmer le fonctionnement OK
+                print("Kill du dialog : " + str(pid))
                 kill_process_in_guest(vm=self.vm, pid=pid, guestUser='root', guestPassword='', si=si)
             sleep(1)
             pids = list_process_pids_in_guest(vm=self.vm, proc_name='dialog', guestUser='root', guestPassword='', si=si)

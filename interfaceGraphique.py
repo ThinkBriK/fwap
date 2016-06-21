@@ -26,7 +26,7 @@ class MyApp(object):
     """"""
 
     def __init__(self, parent, fwapfile=None):
-        """Constructor"""
+        """Constructeur"""
         self.si = None
         self.vcenter = None
         self.eol = None
@@ -52,7 +52,6 @@ class MyApp(object):
         self._create_widgets()
 
     def _create_widgets(self):
-        # create the notebook
         frame = ttk.Frame(self.frame, name='main')
         frame.grid(row=0, column=0, padx=2, pady=3, rowspan=2)
 
@@ -79,22 +78,19 @@ class MyApp(object):
         frame_params = self.frame.children['recap']
 
         for arg in required_args:
-            param_text = ''
-            if not hasattr(self, arg):
-                if not hasattr(self, 'serverinfo'):
-                    ready = False
-                else:
-                    if not hasattr(self.serverinfo, arg):
-                        ready = False
-                    else:
-                        if getattr(self.serverinfo, arg) is not None:
-                            param_text = arg + " : " + str(getattr(self.serverinfo, arg))
-            else:
+            arg_value = None
+            if hasattr(self, arg):
                 arg_value = getattr(self, arg)
-                if arg_value is not None and arg_value != '':
-                    param_text = arg + " : " + str(arg_value)
+            elif hasattr(self.serverinfo, arg):
+                arg_value = str(getattr(self.serverinfo, arg))
 
-            if (not param_text == '') and (not param_text is None):
+            if isinstance(arg_value, pyVmomi.vim.Folder):
+                # Cas de l'affichage du dossier
+                arg_value = arg_value.__str__()
+
+            # On vérifie que l'argument existe et ait une valeur
+            if arg_value is not None and arg_value != '':
+                param_text = arg + " : " + str(arg_value)
                 # MAJ de la frame des paramètres
                 if arg not in frame_params.children:
                     # Ajout d'un nouveau paramètre
@@ -103,11 +99,13 @@ class MyApp(object):
                 else:
                     # MAJ d'un paramètre
                     frame_params.children[arg]['text'] = param_text
-
-                    # frame_params.
+            else:
+                ready = False
 
         if ready:
             self.frame.children['deploy'].config(state='normal')
+        else:
+            self.frame.children['deploy'].config(state='disabled')
 
     def _onDeploy(self):
         deployment = OVF.vmDeploy(
@@ -154,14 +152,16 @@ class LoginMbox(object):
     def __init__(self, caller_frame):
         self.root = Tk.Tk()
         self.root.title("Login vSphere")
+        self.root.focus_set()
         self.frame = ttk.Frame(master=self.root, name='login')
 
         self.caller_frame = caller_frame
         label_vcenter = ttk.Label(self.frame, text="vCenter")
         label_vcenter.grid(row=0, column=0, sticky='W')
-        vcenter = ttk.Combobox(self.frame, values=("a82avce02.agora.msanet", "a82avce96.agora.msanet"), width=30)
-        vcenter.set("a82avce02.agora.msanet")
-        vcenter.grid(row=0, column=1, sticky='NESW')
+        vcombo = ttk.Combobox(self.frame, values=("a82avce02.agora.msanet", "a82avce96.agora.msanet"), width=30)
+        vcombo.set("a82avce02.agora.msanet")
+        vcombo.grid(row=0, column=1, sticky='NESW')
+        vcombo.focus_set()
 
         label_usr = ttk.Label(self.frame, text="User vCenter")
         label_usr.grid(row=1, column=0, sticky='W')
@@ -173,7 +173,7 @@ class LoginMbox(object):
         passwd = ttk.Entry(self.frame, show="*", width=30)
         passwd.grid(row=2, column=1, sticky='NESW')
 
-        btn = ttk.Button(self.frame, text="OK", command=lambda: self._onSetViCredentials(vcenter, usr, passwd))
+        btn = ttk.Button(self.frame, text="OK", command=lambda: self._onSetViCredentials(vcombo, usr, passwd))
         btn.grid(row=3, column=1, sticky='S', pady=5)
         self.frame.grid()
 
@@ -197,22 +197,22 @@ class RequestTab(AppTab):
 
         label_ovf_path = ttk.Label(self, text="Répertoire racine des OVF")
         label_ovf_path.grid(row=0, column=0, sticky='NESW')
-        self.ovf_path = ttk.Entry(self, width=60)
-        self.ovf_path.insert(0, 'D:\VMs\OVF')
-        self.ovf_path.grid(row=0, column=1, columnspan=3, sticky='NESW')
+        self.ovf_path_entry = ttk.Entry(self, width=60, validate='focusout', validatecommand=self._onRequestValidate)
+        self.ovf_path_entry.insert(0, 'D:\VMs\OVF')
+        self.ovf_path_entry.grid(row=0, column=1, columnspan=3, sticky='NESW')
 
         label_fwap_path = ttk.Label(self, text="URL du FWAP")
         label_fwap_path.grid(row=1, column=0, sticky='E')
 
-        self.fwap_path = ttk.Combobox(self, width=60, state='normal', values=FWAP_FILES)
-        self.fwap_path.current(0)
-        self.fwap_path.bind("<<ComboboxSelected>>", self._onUpdateFwapFile)
-        self.fwap_path.grid(row=1, column=1, columnspan=3, sticky='W')
+        self.fwap_path_combo = ttk.Combobox(self, width=60, state='normal', values=FWAP_FILES)
+        self.fwap_path_combo.current(0)
+        self.fwap_path_combo.bind("<<ComboboxSelected>>", self._onUpdateFwapFile)
+        self.fwap_path_combo.grid(row=1, column=1, columnspan=3, sticky='NESW')
 
         label_servCombo = ttk.Label(self, text="Choisissez un serveur")
         label_servCombo.grid(row=2, column=0, sticky='NESW')
         self.servCombo = app.fwapfile.get_tk_combobox(parent=self, width=60, state='normal')
-        self.servCombo.grid(row=2, column=1, columnspan=3, sticky='W')
+        self.servCombo.grid(row=2, column=1, columnspan=3, sticky='NESW')
         self.servCombo.bind("<<ComboboxSelected>>", self._onRequestValidate)
 
         sep1 = ttk.Separator(self, orient='horizontal')
@@ -220,34 +220,34 @@ class RequestTab(AppTab):
 
         label_demandeur = ttk.Label(self, text="Demandeur")
         label_demandeur.grid(row=4, column=0, sticky='E')
-        self.demandeur = ttk.Entry(self, width=60, validate='focusout', validatecommand=self._onRequestValidate)
-        self.demandeur.grid(row=4, column=1, columnspan=3, sticky='NSEW')
+        self.demandeur_entry = ttk.Entry(self, width=60, validate='all', validatecommand=self._onRequestValidate)
+        self.demandeur_entry.grid(row=4, column=1, columnspan=3, sticky='NSEW')
 
         label_fonction = ttk.Label(self, text="Fonction")
         label_fonction.grid(row=5, column=0, sticky='E')
-        self.fonction = ttk.Entry(self, width=60, validate='focusout', validatecommand=self._onRequestValidate)
-        self.fonction.grid(row=5, column=1, columnspan=3, sticky='NSEW')
+        self.fonction_entry = ttk.Entry(self, width=60, validate='all', validatecommand=self._onRequestValidate)
+        self.fonction_entry.grid(row=5, column=1, columnspan=3, sticky='NSEW')
 
         label_eol = ttk.Label(self, text="Fin de vie")
         label_eol.grid(row=6, column=0, sticky='E')
-        self.eol = ttk.Entry(self, width=30, validate='focusout', validatecommand=self._onRequestValidate)
-        self.eol.insert(0, 'Perenne')
-        self.eol.grid(row=6, column=1, columnspan=3, sticky='NSEW')
+        self.eol_entry = ttk.Entry(self, width=30, validate='focusout', validatecommand=self._onRequestValidate)
+        self.eol_entry.insert(0, 'Perenne')
+        self.eol_entry.grid(row=6, column=1, columnspan=3, sticky='NSEW')
 
         sep2 = ttk.Separator(self, orient='horizontal')
         sep2.grid(row=7, column=0, columnspan=5, sticky='NSEW', padx=2, pady=2)
 
         label_vcpu = ttk.Label(self, text="vCPUs")
         label_vcpu.grid(row=8, column=0, sticky='E')
-        self.vcpus = Tk.Spinbox(self, from_=1, to=12, width=2)
-        self.vcpus.value = 1
-        self.vcpus.grid(row=8, column=1, sticky='NSEW')
+        self.vcpus_spin = Tk.Spinbox(self, from_=1, to=12, width=2)
+        self.vcpus_spin.value = 1
+        self.vcpus_spin.grid(row=8, column=1, sticky='NSEW')
 
         label_ram = ttk.Label(self, text="RAM (en GB)")
         label_ram.grid(row=8, column=2, sticky='E')
-        self.ram = Tk.Spinbox(self, from_=1, to=64, width=2)
-        self.ram.value = 1
-        self.ram.grid(row=8, column=3, sticky='NSEW')
+        self.ram_spin = Tk.Spinbox(self, from_=1, to=64, width=2)
+        self.ram_spin.value = 1
+        self.ram_spin.grid(row=8, column=3, sticky='NSEW')
 
         sep3 = ttk.Separator(self, orient='horizontal')
         sep3.grid(row=9, column=0, columnspan=4, sticky='NSEW', padx=2, pady=2)
@@ -265,7 +265,7 @@ class RequestTab(AppTab):
         LoginMbox(self)
 
     def _onUpdateFwapFile(self, event):
-        fwapfile = FWAP.FwapFile(self.fwap_path.get())
+        fwapfile = FWAP.FwapFile(self.fwap_path_combo.get())
         self.app.updateParams(params_dict={'fwapfile': fwapfile})
 
         servlist = fwapfile.get_serverlist()
@@ -273,15 +273,16 @@ class RequestTab(AppTab):
             self.servCombo.set_completion_list(servlist)
 
     def _onRequestValidate(self, *args):
-        self.app.updateParams(params_dict={'ovf_path': self.ovf_path,
-                                           'demandeur': self.demandeur.get(),
-                                           'fonction': self.fonction.get(),
-                                           'eol': self.eol.get(),
-                                           'vcpus': self.vcpus.get(),
-                                           'ram': self.ram.get()
+        self.app.updateParams(params_dict={'ovf_path': self.ovf_path_entry.get(),
+                                           'demandeur': self.demandeur_entry.get(),
+                                           'fonction': self.fonction_entry.get(),
+                                           'eol': self.eol_entry.get(),
+                                           'vcpus': self.vcpus_spin.get(),
+                                           'ram': self.ram_spin.get()
                                            })
         if self.servCombo.get() != "":
             self.app.serverinfo = self.app.fwapfile.parse(servername=self.servCombo.get())[0]
+        # TODO rajouter l'enregistrement du lan et du vmfolder
         self.app.validate()
 
     def _onUpdateConfig(self, ovf_path, fwap_path):
@@ -376,6 +377,7 @@ class RequestTab(AppTab):
         lan_combo = ttk.Combobox(frame, values=[portgroup.spec.name for portgroup in host.config.network.portgroup],
                                  width=30, name='lanCombo')
         lan_combo.grid(row=3, column=1, sticky="NSEW", padx=3)
+        lan_combo.bind('<<ComboboxSelected>>', lambda e: self._onViInfoChosen(e))
 
         # Récupération des Datastores accessibles depuis l'hôte
         datastore_label = ttk.Label(frame, text="Choisissez le datastore")
@@ -389,11 +391,14 @@ class RequestTab(AppTab):
         datastore_lb.grid(row=5, column=3, sticky="NSEW")
 
         i = 1
+        self.datastoretab = []
         for datastore in host.datastore:
+            self.datastoretab.append(datastore.info.name)
             datastore_lb.insert(i,
                                 datastore.info.name + " (" + str(
                                     int(datastore.info.freeSpace / 1024 / 1024 / 1024)) + " Go libre)")
             i += 1
+        datastore_lb.bind('<<ListboxSelect>>', lambda e: self._onViInfoChosen(e))
 
         # Choix du dossier de la VM
         folder_label = ttk.Label(frame, text="Choisissez le dossier")
@@ -409,6 +414,7 @@ class RequestTab(AppTab):
                 self._build_folder_tree(tree, dc_id, vmFolder_element)
         tree_sb.grid(row=5, column=2, sticky="NSW")
         tree.grid(row=5, column=0, columnspan=2, sticky="NSEW")
+        tree.bind('<<TreeviewSelect>>', lambda e: self._onViInfoChosen(e))
 
     def _build_folder_tree(self, tree, parentid, element):
         if type(element) == pyVmomi.types.vim.Folder:
@@ -416,18 +422,23 @@ class RequestTab(AppTab):
             for child in element.childEntity:
                 self._build_folder_tree(tree, folderid, child)
 
-    def _onViInfoChosen(self, datastore_list):
-        frame = self
+    def _onViInfoChosen(self, event):
+        viframe = self.viframe
         app = self.app
         params = {}
         # Récupération du LAN
-        params['lan'] = frame.children['lanCombo']['values'][frame.children['lanCombo'].current()]
+        cblanindex = viframe.children['lanCombo'].current()
+        if cblanindex > 0:
+            params['lan'] = viframe.children['lanCombo'].get()
         # Récupération du Datastore
-        params['datastore'] = datastore_list[frame.children['datastoreCombo'].current()]
+        lbdsindex = viframe.children['datastoreLb'].curselection()
+        if len(lbdsindex) > 0:
+            params['datastore'] = self.datastoretab[lbdsindex[0]]
         # Récupération du Folder
-        tree = frame.children['folderTree']
+        tree = viframe.children['folderTree']
         choix = tree.focus()
-        params['vmfolder'] = pyVmomi.types.vim.Folder(tree.item(choix)['values'][0])
+        if choix:
+            params['vmfolder'] = pyVmomi.types.vim.Folder(tree.item(choix)['values'][0])
         app.updateParams(params)
 
 
