@@ -149,6 +149,7 @@ class AppTab(ttk.Frame):
 
 
 class LoginMbox(object):
+    # TODO rattacher le popup au meme rootTK
     def __init__(self, caller_frame):
         self.root = Tk.Tk()
         self.root.title("Login vSphere")
@@ -262,6 +263,7 @@ class RequestTab(AppTab):
         self._populateViTree()
 
     def _onVcPopup(self):
+        self._onRequestValidate()
         LoginMbox(self)
 
     def _onUpdateFwapFile(self, event):
@@ -282,7 +284,6 @@ class RequestTab(AppTab):
                                            })
         if self.servCombo.get() != "":
             self.app.serverinfo = self.app.fwapfile.parse(servername=self.servCombo.get())[0]
-        # TODO rajouter l'enregistrement du lan et du vmfolder
         self.app.validate()
 
     def _onUpdateConfig(self, ovf_path, fwap_path):

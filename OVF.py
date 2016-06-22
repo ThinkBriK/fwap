@@ -293,7 +293,6 @@ def list_process_pids_in_guest(vm, proc_name, guestUser, guestPassword, si):
         processes = si.content.guestOperationsManager.processManager.ListProcessesInGuest(vm=vm, auth=creds)
         for proc in processes:
             if re.search(proc_name, proc.name):
-                print('trouvé :' + proc.name)
                 pids.append(proc.pid)
     except vim.fault.GuestComponentsOutOfDate as e:
         print(e.msg)
@@ -548,18 +547,17 @@ class vmDeploy(object):
         pids = list_process_pids_in_guest(vm=self.vm, proc_name='dialog', guestUser='root', guestPassword='', si=si)
         while True:
             if len(pids) == 0:
-                break  # todo semble tourner en boucle infinie
+                break
             for pid in pids:
-                # Todo confirmer le fonctionnement OK
-                print("Kill du dialog : " + str(pid))
                 kill_process_in_guest(vm=self.vm, pid=pid, guestUser='root', guestPassword='', si=si)
             sleep(1)
             pids = list_process_pids_in_guest(vm=self.vm, proc_name='dialog', guestUser='root', guestPassword='', si=si)
 
     def add_disk(self, disk_size, si, disk_type=''):
         """
-
+        Permet d'ajouter un disque à une VM
         :param disk_size: Taille du disque en Mo
+        :param si: Service Instance
         :param disk_type: Si "thin" création en thin provisionning
         Ajout d'un disque à la VM
         """
@@ -605,6 +603,7 @@ class vmDeploy(object):
         tasks.wait_for_tasks(si, [task])
 
     def deploy(self, si, guestRootPassword='aaaaa'):
+        self.guestRootPassword = guestRootPassword
         self._ovf_deploy(si=si)
         self.resize(nb_cpu=self.nb_cpu, ram=self.ram // 1024, si=si)
         self._update_metadata(si=si)
@@ -615,8 +614,9 @@ class vmDeploy(object):
         self.take_snapshot(service_instance=si, snapshot_name="Avant premier boot",
                            description="Snapshot automatique avant premier boot")
         self.boot(si=si)
-        self._update_root_pw_on_first_boot(newRootPassword=guestRootPassword, si=si)
+        self._update_root_pw_on_first_boot(newRootPassword=self.guestRootPassword, si=si)
         self.upgrade_tools(si=si)
+        self.rebootAfterReconfig(si=si)
 
     def take_snapshot(self, service_instance, snapshot_name="Snapshot", description=None, dumpMemory=False,
                       quiesce=False):
@@ -626,8 +626,23 @@ class vmDeploy(object):
 
     def upgrade_tools(self, si):
         # MAJ des tools
-        task = self.vm.UpgradeVM()
+        task = self.vm.UpgradeTools()
         tasks.wait_for_tasks(si, [task])
+
+    def rebootAfterReconfig(self, si):
+        # On attend la fin du reconfig
+        while True:
+            try:
+                if 0 == run_command_in_guest(vm=self.vm, command='/usr/bin/test',
+                                             arguments="-f /Agora/build/config/code_retour_install",
+                                             guestUser='root', guestPassword=self.guestRootPassword, si=si):
+                    break
+            # On catche l'exception pour éviter de planter en raison des tools pas lancés
+            except (vim.fault.GuestOperationsUnavailable):
+                pass
+            sleep(3)
+        # On reboote
+        self.vm.RebootGuest()
 
 
 def main():
