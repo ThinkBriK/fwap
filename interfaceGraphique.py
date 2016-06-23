@@ -62,7 +62,7 @@ class MyApp(object):
         btn = ttk.Button(self.frame, text="Lancer le déploiement", command=handler, state="disabled", name='deploy')
         btn.grid(row=1, column=1, sticky="S", padx=2, pady=3)
 
-        RequestTab(app=self, parent=frame)
+        RequestFrame(app=self, parent=frame)
 
     def updateParams(self, params_dict):
         """"""
@@ -139,7 +139,7 @@ class MyApp(object):
         return representation
 
 
-class AppTab(ttk.Frame):
+class AppFrame(ttk.Frame):
     def __init__(self, app, parent, name):
         self.app = app
         super().__init__(parent, name=name)
@@ -192,7 +192,7 @@ class LoginMbox(object):
         self.root.destroy()
 
 
-class RequestTab(AppTab):
+class RequestFrame(AppFrame):
     def __init__(self, app, parent):
         super().__init__(app=app, parent=parent, name='demande')
 
@@ -440,224 +440,6 @@ class RequestTab(AppTab):
         choix = tree.focus()
         if choix:
             params['vmfolder'] = pyVmomi.types.vim.Folder(tree.item(choix)['values'][0])
-        app.updateParams(params)
-
-
-class VcenterTab(AppTab):
-    def __init__(self, app, notebook):
-        super().__init__(app=app, parent=notebook, name='vcenter')
-        label_vcenter = ttk.Label(self, text="vCenter")
-        label_vcenter.grid(row=0, column=0, sticky='W')
-        vcenter = ttk.Combobox(self, values=("a82avce02.agora.msanet", "a82avce96.agora.msanet"), width=30)
-        vcenter.set("a82avce02.agora.msanet")
-        vcenter.grid(row=0, column=1, sticky='NESW')
-
-        label_usr = ttk.Label(self, text="User vCenter")
-        label_usr.grid(row=1, column=0, sticky='W')
-        usr = ttk.Entry(self, width=30)
-        usr.grid(row=1, column=1, sticky='NESW')
-
-        label_pwd = ttk.Label(self, text="Password vCenter")
-        label_pwd.grid(row=2, column=0, sticky='W')
-        passwd = ttk.Entry(self, show="*", width=30)
-        passwd.grid(row=2, column=1, sticky='NESW')
-
-        handler = lambda: self._onSetViCredentials(vcenter, usr, passwd, notebook)
-        btn = ttk.Button(self, text="OK", command=handler)
-        btn.grid(row=3, column=1, sticky='S', pady=5)
-
-        notebook.add(self, text='Connexion vCenter (déconnecté)', padding=2)
-
-    def _onSetViCredentials(self, vcenter, usr, passwd, notebook):
-        parent = self.app
-        try:
-            si = OVF.connect_vcenter(vcenter=vcenter.get(), user=usr.get(), password=passwd.get())
-        except:
-            print(sys.exc_info()[0])
-            notebook.tab('current', text='Connexion vCenter (erreur)')
-            notebook.tab(len(notebook.children) - 1, state="disabled")
-            return
-        parent.updateParams(
-            params_dict={'vcenter': vcenter.get(), 'password': passwd.get(), 'user': usr.get(), 'si': si})
-        notebook.tab('current', text='Connexion vCenter (OK)')
-        # TODO Arriver à référencer l'onglet à réactiver autrement que par un index fixe !
-        notebook.tab(len(notebook.children) - 1, state="normal")
-        self._populate_vi_tab()
-
-    def _populate_vi_tab(self):
-        for tab in self.app.tabs:
-            if isinstance(tab, VirtualInfraTab):
-                tab.populateViTree()
-                break
-
-    def refresh(self):
-        app = self.app
-        tree = self.children['fwaptree']
-
-        # On vide le TreeView
-        if len(tree.get_children()) > 0:
-            for child in tree.get_children():
-                tree.delete(child)
-
-        if hasattr(app, 'fwapfile'):
-            tree = app.fwapfile.get_tk_tree(parent=self, label="Choisissez un serveur", type='serveur', name='fwaptree')
-        else:
-            tree = ttk.Treeview(master=self, name='fwaptree')
-
-        tree.grid(row=0, column=0)
-
-    def _onFwapSelect(self, tree):
-        app = self.app
-        choix = tree.focus()
-
-        # On vérifie qu'on soit bien sur un serveur (feuille)
-        if len(tree.get_children(choix)) == 0:
-            name = tree.item(choix)['text']
-            app.serverinfo = app.fwapfile.parse(servername=name)[0]
-            app.validate()
-
-
-class VirtualInfraTab(AppTab):
-    def __init__(self, app, notebook):
-        super().__init__(app=app, parent=notebook, name='vi')
-        notebook.add(self, text='Infrastructure VMware', padding=2, state='disabled')
-
-    def populateViTree(self):
-        frame = self
-        parent = self.app
-        tree = ttk.Treeview(frame, selectmode='browse', columns=['RAM', 'CPU'])
-        tree.column("#0", minwidth=30)
-        tree.heading("#0", text="Sélectionner un Hôte")
-        tree.column("RAM", minwidth=10)
-        tree.heading("RAM", text="RAM Utilisée")
-        tree.column("CPU", minwidth=10)
-        tree.heading("CPU", text="CPU Utilisée")
-        content = parent.si.RetrieveContent()
-        # TODO Remplacer l'alimentation de l'arbre vmware par une fonction récursive
-
-        # Datacenters
-        for datacenter_element in content.rootFolder.childEntity:
-            self._build_host_tree(tree=tree, parentid='', element=datacenter_element)
-        tree.grid(row=0, rowspan=3, column=0, sticky='NESW')
-
-        handler = lambda: self._onChooseDeployServer(tree=tree)
-        btn = ttk.Button(frame, text="OK", command=handler)
-        btn.grid(row=3, column=0, sticky='S', pady=5)
-
-    def _build_host_tree(self, tree, parentid, element):
-        childlist = []
-        elementid = None
-        if type(element) == pyVmomi.types.vim.Datacenter:
-            elementid = tree.insert(parent=parentid, index='end', text=element.name, values=['', ''])
-            childlist = element.hostFolder.childEntity
-        elif type(element) == pyVmomi.types.vim.ClusterComputeResource:
-            elementid = tree.insert(parent=parentid, index='end', text=element.name, values=['', ''])
-            childlist = element.host
-        elif type(element) == pyVmomi.types.vim.ComputeResource:
-            # On ne fait pas apparaitre les resource Groups dans l'arbre
-            elementid = parentid
-            childlist = element.host
-        elif type(element) == pyVmomi.types.vim.Folder:
-            # On ne fait pas apparaitre des folder host des datacenters
-            if element.name != 'host':
-                elementid = tree.insert(parent=parentid, index='end', text=element.name, values=['', ''])
-                childlist = element.childEntity
-        elif type(
-                element) == pyVmomi.types.vim.HostSystem and element.runtime.connectionState == 'connected':
-            cpu_usage_mhz = element.summary.quickStats.overallCpuUsage
-            total_mhz = element.summary.hardware.numCpuCores * element.summary.hardware.cpuMhz
-            mem_usage_mo = element.summary.quickStats.overallMemoryUsage
-            total_mem_mo = element.summary.hardware.memorySize / 1024 / 1024
-            elementid = tree.insert(parent=parentid, index='end', text=element.name,
-                                    values=["%4.2f Go (%3.2f %%)" % (mem_usage_mo / 1024,
-                                                                     mem_usage_mo / total_mem_mo * 100),
-                                            "%3.2f Ghz (%3.2f %%)" % (
-                                                cpu_usage_mhz / 1024,
-                                                cpu_usage_mhz / total_mhz * 100)])
-        for child in childlist:
-            self._build_host_tree(tree, elementid, child)
-
-    def _onChooseDeployServer(self, tree):
-        choix = tree.focus()
-        app = self.app
-
-        # On vérifie qu'on soit bien sur un serveur (feuille)
-        if len(tree.get_children(choix)) == 0:
-            app.esx = tree.item(choix)['text']
-            app.validate()
-            self.populateDetails()
-
-    def populateDetails(self):
-        frame = self
-        app = self.app
-
-        content = app.si.RetrieveContent()
-        host = OVF.get_obj(content, pyVmomi.vim.HostSystem, app.esx)
-
-        # On détermine le DC de l'hôte
-        datacenter_element = host.parent
-        while type(datacenter_element) != pyVmomi.types.vim.Datacenter:
-            datacenter_element = datacenter_element.parent
-
-        # Ajout d'un séparateur
-        separator = ttk.Separator(frame, orient='vertical')
-        separator.grid(row=0, column=1, rowspan=4, sticky='NSEW', padx=3)
-
-        # Récupération des LAN accessibles depuis l'hôte
-        lan_label = ttk.Label(frame, text="Choisissez le réseau")
-        lan_label.grid(row=0, column=2, sticky="W", padx=3)
-        lan_combo = ttk.Combobox(frame, values=[portgroup.spec.name for portgroup in host.config.network.portgroup],
-                                 width=30, name='lanCombo')
-        lan_combo.grid(row=0, column=3, sticky="NSEW", padx=3)
-
-        # Récupération des Datastores accessibles depuis l'hôte
-        datastore_label = ttk.Label(frame, text="Choisissez le datastore")
-        datastore_label.grid(row=1, column=2, sticky="W", padx=3)
-        display_choices = []
-        datastores_tab = []
-
-        for datastore in host.datastore:
-            valeur = datastore.info.name + " (" + str(int(datastore.info.freeSpace / 1024 / 1024 / 1024)) + " Go libre)"
-            display_choices.append(valeur)
-            datastores_tab.append(datastore.info.name)
-        datastore_combo = ttk.Combobox(frame, values=display_choices, width=30, name='datastoreCombo')
-        datastore_combo.grid(row=1, column=3, sticky="NSEW", padx=3)
-
-        # Choix du dossier de la VM
-        folder_label = ttk.Label(frame, text="Choisissez le dossier")
-        folder_label.grid(row=2, column=2, sticky="W", padx=3)
-        tree = ttk.Treeview(frame, selectmode='browse', name='folderTree')
-        tree.column('#0', minwidth=30)
-        tree.heading('#0', text="Sélectionner un Dossier")
-        if type(datacenter_element) == pyVmomi.types.vim.Datacenter:
-            dc_id = tree.insert(parent='', index='end', text=datacenter_element.name, open=True)
-            for vmFolder_element in datacenter_element.vmFolder.childEntity:
-                self._build_folder_tree(tree, dc_id, vmFolder_element)
-        tree.grid(row=2, column=3, sticky="NSEW", padx=3)
-
-        # Bouton de validation
-        handler = lambda: self._onViInfoChosen(datastore_list=datastores_tab)
-        btn = ttk.Button(frame, text="OK", command=handler)
-        btn.grid(row=3, column=3, sticky='S', pady=5, padx=3)
-
-    def _build_folder_tree(self, tree, parentid, element):
-        if type(element) == pyVmomi.types.vim.Folder:
-            folderid = tree.insert(parent=parentid, index='end', text=element.name, values=[element._moId])
-            for child in element.childEntity:
-                self._build_folder_tree(tree, folderid, child)
-
-    def _onViInfoChosen(self, datastore_list):
-        frame = self
-        app = self.app
-        params = {}
-        # Récupération du LAN
-        params['lan'] = frame.children['lanCombo']['values'][frame.children['lanCombo'].current()]
-        # Récupération du Datastore
-        params['datastore'] = datastore_list[frame.children['datastoreCombo'].current()]
-        # Récupération du Folder
-        tree = frame.children['folderTree']
-        choix = tree.focus()
-        params['vmfolder'] = pyVmomi.types.vim.Folder(tree.item(choix)['values'][0])
         app.updateParams(params)
 
 

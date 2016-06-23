@@ -337,13 +337,15 @@ class vmDeploy(object):
         for disk in self.disks:
             # print(disk)
             # On déploie le disque de la taille des partitions + la taille des partitions sizées sur la RAM (+5% pour EXT3) + 64 M0 (pour LVM)
-            mosize = int(disk.partsize + (disk.extra_mem_times_size * (self.ram + 1) * 1024 * 105 / 100) + 64)
+            mosize = int(
+                disk.partsize + (disk.extra_mem_times_size * (self.ram / 1024 / 1024 + 1) * 1024 * 105 / 100) + 64)
 
             # On arrondi aux 100 Mo supérieur
             if (mosize % 100) > 0:
                 morounded = mosize // 100 + 1
             else:
                 morounded = mosize / 100
+
             self.add_disk(disk_size=morounded * 100, si=si)
 
     def _connect_switch(self, si):
