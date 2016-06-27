@@ -310,7 +310,7 @@ def kill_process_in_guest(vm, pid, guestUser, guestPassword, si):
 
 class vmDeploy(object):
     def __init__(self, ovfpath, name, vcpu, ram, lan, datastore, esx, vmfolder, ep, rds, demandeur, fonction, eol,
-                 vcenter, disks, mtl=None,
+                 vcenter, disks, deployer, mtl=None,
                  **kwargs):
         self.vm_name = name
         self.ovf_path = ovfpath
@@ -332,6 +332,7 @@ class vmDeploy(object):
         self.eol = eol
         self.vcenter = vcenter
         self.mtl = mtl
+        self.deployer = deployer
 
     def _add_disks(self, si):
         for disk in self.disks:
@@ -486,12 +487,18 @@ class vmDeploy(object):
         self.vm.setCustomValue(key="Fonction", value=self.fonction)
         self.vm.setCustomValue(key="LAN", value=self.wanted_lan_name)
 
+    def _update_annotation(self, si):
+        spec = vim.vm.ConfigSpec()
+        text = "Déployé par : " + self.deployer
+        spec.annotation = self.vm.config.annotation + "\n" + len(text) * '-' + "\n" + text + "\n" + len(text) * '-'
+        task = self.vm.ReconfigVM_Task(spec)
+        tasks.wait_for_tasks(si, [task])
+
     def _update_ovf_properties(self, si):
         new_vm_spec = vim.vm.ConfigSpec()
         # MAJ variables OVF
         new_vAppConfig = vim.vApp.VmConfigSpec()
         new_vAppConfig.property = []
-
         for ovf_property in self.vm.config.vAppConfig.property:
             updated_spec = vim.vApp.PropertySpec()
             updated_spec.info = ovf_property
@@ -619,6 +626,7 @@ class vmDeploy(object):
         self._update_root_pw_on_first_boot(newRootPassword=self.guestRootPassword, si=si)
         self.upgrade_tools(si=si)
         self.rebootAfterReconfig(si=si)
+        self._update_annotation(si=si)
 
     def take_snapshot(self, service_instance, snapshot_name="Snapshot", description=None, dumpMemory=False,
                       quiesce=False):

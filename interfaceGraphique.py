@@ -124,7 +124,8 @@ class MyApp(object):
             eol=self.eol,
             vcenter=self.vcenter,
             disks=self.serverinfo.disks,
-            mtl=self.serverinfo.mtl
+            mtl=self.serverinfo.mtl,
+            deployer=self.user,
         )
 
         deployment.deploy(self.si)
