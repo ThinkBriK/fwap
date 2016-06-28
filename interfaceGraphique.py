@@ -332,7 +332,8 @@ class RequestFrame(AppFrame):
             if element.name != 'host':
                 elementid = tree.insert(parent=parentid, index='end', text=element.name, values=['', ''])
                 childlist = element.childEntity
-        elif type(element) == pyVmomi.types.vim.HostSystem and element.runtime.connectionState == 'connected':
+        elif type(
+                element) == pyVmomi.types.vim.HostSystem and element.runtime.connectionState == 'connected' and not element.runtime.inMaintenanceMode:
             cpu_usage_mhz = element.summary.quickStats.overallCpuUsage
             total_mhz = element.summary.hardware.numCpuCores * element.summary.hardware.cpuMhz
             mem_usage_mo = element.summary.quickStats.overallMemoryUsage
