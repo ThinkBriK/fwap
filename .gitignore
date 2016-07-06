@@ -1,2 +1,4 @@
-/files/*
+/build
+/dist
+/files
 .idea

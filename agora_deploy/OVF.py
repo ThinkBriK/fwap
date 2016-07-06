@@ -19,9 +19,9 @@ import requests
 from pyVim import connect
 from pyVmomi import vim
 from pyVmomi import vmodl
+from tools import tasks
 
 from agora_deploy import FWAP
-from tools import tasks
 
 
 def get_args():
@@ -267,7 +267,7 @@ def uploadOVF(url=None, fileFullPath=None):
 
 
 def run_command_in_guest(vm, command, arguments, guestUser, guestPassword, si):
-    """ Permet de lancer une commande via les vmWare tools dans l'OS d'une VM"""
+    """ Permet de lancer une commande via les vmWare agora_tools dans l'OS d'une VM"""
     exitCode = None
     try:
         cmdspec = vim.vm.guest.ProcessManager.ProgramSpec(arguments=arguments, programPath=command)
@@ -601,7 +601,7 @@ class vmDeploy(object):
                                              arguments="-f /Agora/build/config/AttenteRootpw",
                                              guestUser='root', guestPassword='', si=si):
                     break
-            # On catche l'exception pour éviter de planter en raison des tools pas lancés
+            # On catche l'exception pour éviter de planter en raison des agora_tools pas lancés
             except (vim.fault.GuestOperationsUnavailable):
                 pass
             sleep(3)
@@ -712,7 +712,7 @@ class vmDeploy(object):
         Mise à jour des VMware Tools
         :param si: service_instance représentant la connexion vcenter
         """
-        # MAJ des tools
+        # MAJ des agora_tools
         task = self.vm.UpgradeTools()
         tasks.wait_for_tasks(si, [task])
 
@@ -728,7 +728,7 @@ class vmDeploy(object):
                                              arguments="-f /Agora/build/config/code_retour_install",
                                              guestUser='root', guestPassword=self.guestRootPassword, si=si):
                     break
-            # On catche l'exception pour éviter de planter en raison des tools pas lancés
+            # On catche l'exception pour éviter de planter en raison des agora_tools pas lancés
             except (vim.fault.GuestOperationsUnavailable):
                 pass
             sleep(3)
