@@ -1,11 +1,16 @@
+#!/usr/bin/env python
+"""
+ Programme permettant le déploiement automatique de VMs TAT1
+ Ecrit par Benoit BARTHELEMY
+ benoit.barthelemy2@open-groupe.com
+"""
 import sys
 import tkinter as Tk
 from tkinter import ttk
 
 import pyVmomi
 
-import FWAP
-import OVF
+from agora_deploy import FWAP, OVF
 
 # CONSTANTES
 
@@ -16,13 +21,16 @@ OS_OVF = {
     "Centos 6.5": "ovf_centos65_64bits_500u1-b02\ovf_centos65_64bits_500u1-b02.ovf",
 }
 
+# Fichier FWAP par défaut
 DEFAULT_FWAP_FILE = 'http://a82amtl01.agora.msanet/repo/agora/scripts/referentiel.xml'
+
+# Liste des Fichiers FWAP de l'environnement
 FWAP_FILES = ['http://a82amtl01.agora.msanet/repo/agora/scripts/referentiel.xml',
               'http://a82amtl02.agora.msanet/repo/agora/scripts/referentiel.xml']
 
 
 ########################################################################
-class MyApp(object):
+class DeployTat1(object):
     """"""
 
     def __init__(self, parent, fwapfile=None):
@@ -52,6 +60,7 @@ class MyApp(object):
         self._create_widgets()
 
     def _create_widgets(self):
+        """Création de la première partie de l'IHM"""
         frame = ttk.Frame(self.frame, name='main')
         frame.grid(row=0, column=0, padx=2, pady=3, rowspan=2)
 
@@ -65,12 +74,17 @@ class MyApp(object):
         RequestFrame(app=self, parent=frame)
 
     def updateParams(self, params_dict):
-        """"""
+        """Mise à jour des paramètres"""
         for key in params_dict.keys():
             setattr(self, key, params_dict[key])
         self.validate()
 
     def validate(self):
+        """
+        Validation des Paramètres :
+            MAJ de la liste des paramètres
+            Si tous les paramètres sont valides, autorisation de déploiement
+        """
         required_args = ['servername', 'vcpus', 'ram', 'lan', 'os', 'datastore', 'esx', 'vmfolder', 'ep', 'rds',
                          'demandeur',
                          'fonction', 'eol']
@@ -108,6 +122,7 @@ class MyApp(object):
             self.frame.children['deploy'].config(state='disabled')
 
     def _onDeploy(self):
+        """Appel du déploiement effectif de la VM"""
         deployment = OVF.vmDeploy(
             ovfpath=self.ovf_path + '\\' + OS_OVF.get(self.serverinfo.os),
             name=self.serverinfo.servername,
@@ -131,6 +146,7 @@ class MyApp(object):
         deployment.deploy(self.si)
 
     def __repr__(self):
+        """Permet d'afficher simplement la liste des paramètres sans dévoiler les MDP"""
         representation = ''
         for key in self.__dict__.keys():
             if key != 'password':
@@ -141,6 +157,7 @@ class MyApp(object):
 
 
 class AppFrame(ttk.Frame):
+    """ superclasse des frames composant l'application """
     def __init__(self, app, parent, name):
         self.app = app
         super().__init__(parent, name=name)
@@ -150,6 +167,7 @@ class AppFrame(ttk.Frame):
 
 
 class LoginMbox(object):
+    """ Popup de login vsphere """
     # TODO rattacher le popup au meme rootTK
     def __init__(self, caller_frame):
         self.root = Tk.Tk()
@@ -180,6 +198,7 @@ class LoginMbox(object):
         self.frame.grid()
 
     def _onSetViCredentials(self, vcenter, usr, passwd):
+        """ Validation du login vsphere """
         try:
             si = OVF.connect_vcenter(vcenter=vcenter.get(), user=usr.get(), password=passwd.get())
         except:
@@ -194,6 +213,7 @@ class LoginMbox(object):
 
 
 class RequestFrame(AppFrame):
+    """ Frame initiale contenant les détails de la demande """
     def __init__(self, app, parent):
         super().__init__(app=app, parent=parent, name='demande')
 
@@ -259,15 +279,18 @@ class RequestFrame(AppFrame):
         self.grid(row=0, column=0)
 
     def vcLoginOK(self):
+        """ mise à jour de l'interface une fois connecté au vCenter"""
         self.boutonPopupVC.config(text="Connecté en tant que " + self.app.user + "@" + self.app.vcenter,
                                   state=Tk.DISABLED)
         self._populateViTree()
 
     def _onVcPopup(self):
+        """ Affichage de la popup de login vsphere """
         self._onRequestValidate()
         LoginMbox(self)
 
     def _onUpdateFwapFile(self, event):
+        """ MAJ du contenu du FWAP"""
         fwapfile = FWAP.FwapFile(self.fwap_path_combo.get())
         self.app.updateParams(params_dict={'fwapfile': fwapfile})
 
@@ -276,6 +299,7 @@ class RequestFrame(AppFrame):
             self.servCombo.set_completion_list(servlist)
 
     def _onRequestValidate(self, *args):
+        """ Mise à jou des données de la demande """
         self.app.updateParams(params_dict={'ovf_path': self.ovf_path_entry.get(),
                                            'demandeur': self.demandeur_entry.get(),
                                            'fonction': self.fonction_entry.get(),
@@ -288,9 +312,11 @@ class RequestFrame(AppFrame):
         self.app.validate()
 
     def _onUpdateConfig(self, ovf_path, fwap_path):
+        """ Mise à jour de la configuration de l'appli """
         self.app.updateParams(params_dict={'ovf_path': ovf_path, 'fwapfile': FWAP.FwapFile(fwap_path)})
 
     def _populateViTree(self):
+        """ crée l'arbre des hôtes """
         self.viframe = ttk.Frame(self)
         self.viframe.grid(row=11, columnspan=4)
         parent = self.app
@@ -315,6 +341,7 @@ class RequestFrame(AppFrame):
         self.tree.bind('<<TreeviewSelect>>', lambda e: self._onChooseDeployServer(e))
 
     def _build_host_tree(self, tree, parentid, element):
+        """ Remplit la liste des Hôtes récursivement """
         childlist = []
         elementid = None
         if type(element) == pyVmomi.types.vim.Datacenter:
@@ -348,6 +375,7 @@ class RequestFrame(AppFrame):
             self._build_host_tree(tree, elementid, child)
 
     def _onChooseDeployServer(self, event):
+        """ mise à jour des informations une fois l'hôte choisi """
         tree = self.tree
         choix = tree.focus()
         app = self.app
@@ -359,6 +387,7 @@ class RequestFrame(AppFrame):
             self.populateDetails()
 
     def populateDetails(self):
+        """ Création des contrôles permettant le choix des ressources à utiliser en fonction de l'hôte choisi"""
         frame = self.viframe
         app = self.app
 
@@ -420,12 +449,14 @@ class RequestFrame(AppFrame):
         tree.bind('<<TreeviewSelect>>', lambda e: self._onViInfoChosen(e))
 
     def _build_folder_tree(self, tree, parentid, element):
+        """ Création récursive de l'arborescence des dossiers du datacenter de l'hôte"""
         if type(element) == pyVmomi.types.vim.Folder:
             folderid = tree.insert(parent=parentid, index='end', text=element.name, values=[element._moId])
             for child in element.childEntity:
                 self._build_folder_tree(tree, folderid, child)
 
     def _onViInfoChosen(self, event):
+        """ Récupération des informations lors du choix des ressources présentes sur un hôte"""
         viframe = self.viframe
         app = self.app
         params = {}
@@ -448,5 +479,5 @@ class RequestFrame(AppFrame):
 if __name__ == "__main__":
     root = Tk.Tk()
     root.geometry()
-    app = MyApp(root)
+    app = DeployTat1(root)
     root.mainloop()

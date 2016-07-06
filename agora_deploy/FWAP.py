@@ -61,7 +61,7 @@ class FwapFile(object):
     def get_tk_tree(self, parent, type, name, label="FWAP.XML"):
 
         """
-
+        Retourne une arborescence contenant les éléments du FWAP
         :param parent: Element auquel ratacher le TreeView
         :param label: Titre du treeView
         :param name: Nom du treeview
@@ -95,7 +95,7 @@ class FwapFile(object):
 
     def get_tk_combobox(self, parent, **kwargs):
         """
-
+        Fournit une combobox des serveurs disponibles
         :param parent: Element auquel ratacher la combobox
         :return: combobox générée
         """
@@ -107,19 +107,20 @@ class FwapFile(object):
         return combo
 
     def get_serverlist(self):
-
+        """ Fournit la liste des serveurs correspondant à l'url de l'objet"""
         xpath_string = '/FWAP/Environnement/RoleServeur/Cluster/MachineVirtuelle/@SERVERNAME'
         xmltree = etree.parse(self.url)
         return sorted(xmltree.xpath(xpath_string))
 
 
 class Server(object):
+    """ Objet représentant un serveur et ses détails"""
     def __init__(self):
         return
 
     def __init__(self, element):
         """
-
+        Constrution à partir d'un élément d'une extraction XML
         :type element: lxml.etree._Element
         """
         self.element = element
@@ -167,10 +168,12 @@ class Server(object):
         return
 
     def print(self):
+        """ Affichage des caractéristiques de l'objet """
         pprint.pprint(self.__dict__)
 
 
 class ServerDisk(object):
+    """ Objet représentant un disque de serveur """
     def __init__(self, name, vg, lvs, partsize, extra_mem_times_size):
         self.name = name
         self.vg = vg
@@ -180,10 +183,12 @@ class ServerDisk(object):
         return
 
     def __repr__(self):
+        """ Affichage des détails d'un disque """
         return "%s : %s Mo (%s) volumes %s" % (self.name, self.partsize, self.vg, self.lvs)
 
 
 class LogicalVolume(object):
+    """ Objet représentant le VG présent sur un disque """
     def __init__(self, name, mount, size):
         self.name = name
         self.mount = mount
@@ -191,6 +196,7 @@ class LogicalVolume(object):
         return
 
     def __repr__(self):
+        """ Affichage des détails d'un VG """
         return "%s on %s (%s Mo)" % (self.name, self.mount, self.size)
 
 

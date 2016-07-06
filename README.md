@@ -8,5 +8,6 @@ Il nécessite d'avoir les librairies suivantes installées :
 - lxml (Pour le support de xpath)
 - pyvmomi >= 5.5.0 (Pour les bindings vsphere)
 
-Et d'avoir cURL pour windows d'installé et dispo dans le PATH (j'ai pas eu le temps de le remplacer par un librairie python)
-afin de gérer l'upload des OVF.
+## Packaging
+il est possible de créer un package d'installation windows  en suivant les instructions
+sur https://pypi.python.org/pypi/pynsist

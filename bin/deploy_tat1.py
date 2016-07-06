@@ -8,8 +8,8 @@
 from argparse import ArgumentParser
 from getpass import getpass
 
-from FWAP import FwapFile
-from OVF import vmDeploy
+from agora_deploy import OVF
+from agora_deploy.FWAP import FwapFile
 
 # Correspondance OS/IMAGE OVF
 os = {
@@ -156,7 +156,7 @@ def main():
     args.ep = r.ep
     args.rds = r.rds
     # On passe les variables saisies dans args comme paramètres directement
-    deployment = vmDeploy(**args.__dict__)
+    deployment = OVF.vmDeploy(**args.__dict__)
 
     si = deployment.connect_vcenter(vcenter=args.vcenter, user=args.user, password=args.password)
     deployment.deploy(si)

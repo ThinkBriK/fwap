@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 """
-Script pour déployer une VM TAT1
+Script pour déployer une VM TAT1 dont on a récupéré les informations
+ Ecrit par Benoit BARTHELEMY
+ benoit.barthelemy2@open-groupe.com
 """
 import atexit
 import datetime
@@ -18,13 +20,13 @@ from pyVim import connect
 from pyVmomi import vim
 from pyVmomi import vmodl
 
-import FWAP
+from agora_deploy import FWAP
 from tools import tasks
 
 
 def get_args():
     """
-    Get CLI arguments.
+    Récuépration des informations de la ligne de commande
     """
     parser = ArgumentParser(description='Arguments for talking to vCenter')
 
@@ -123,7 +125,7 @@ def get_args():
 
 def get_ovf_descriptor(ovf_path):
     """
-    Read in the OVF descriptor.
+    Lecture du descripteur OVF
     """
     if path.exists(ovf_path):
         with open(ovf_path, 'r') as f:
@@ -138,7 +140,7 @@ def get_ovf_descriptor(ovf_path):
 
 def get_obj(content, vimtype, name):
     """
-    Get the vsphere object associated with a given text name
+    Récupération des objets vsphere par nom
     """
     obj = None
     container = content.viewManager.CreateContainerView(content.rootFolder, vimtype, True)
@@ -151,7 +153,7 @@ def get_obj(content, vimtype, name):
 
 def get_obj_in_list(obj_name, obj_list):
     """
-    Gets an object out of a list (obj_list) whos name matches obj_name.
+    récupération d'un objet dans une liste par nom
     """
     for o in obj_list:
         if o.name == obj_name:
@@ -163,7 +165,7 @@ def get_obj_in_list(obj_name, obj_list):
 
 def get_objects(si, datacenter=None, datastore=None, cluster=None):
     """
-    Return a dict containing the necessary objects for deployment.
+    Retourne un dictionnaire contenant les informations nécessaires à un déploiement d'OVF.
     """
 
     # Get datacenter object.
@@ -218,7 +220,7 @@ def get_objects(si, datacenter=None, datastore=None, cluster=None):
 
 def keep_lease_alive(lease):
     """
-    Keeps the lease alive while POSTing the VMDK.
+    Garde le lease du VMDK ouvert le temps du transfert.
     """
     while (True):
         sleep(5)
@@ -234,7 +236,8 @@ def keep_lease_alive(lease):
 
 
 def connect_vcenter(vcenter, user, password, port=443):
-    # Disabling SSL certificate verification
+    """ Renvoie un objet service_instance représentant une connexion vcenter """
+    # Suppression de la vérification SSL
     context = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
     context.verify_mode = ssl.CERT_NONE
     try:
@@ -247,11 +250,13 @@ def connect_vcenter(vcenter, user, password, port=443):
     except:
         print("Unable to connect to %s" % vcenter)
         exit(1)
+    # Déconnexion auto à la fermeture
     atexit.register(connect.Disconnect, service_instance)
     return service_instance
 
 
 def uploadOVF(url=None, fileFullPath=None):
+    """ Permet l'upload de l'OVF sur l'ESX voulu """
     headers = {'Content-Type': 'application/x-vnd.vmware-streamVmdk'}
     # Upload en Streaming vu la taille des images de VMs
     with open(fileFullPath, 'rb') as f:
@@ -262,6 +267,7 @@ def uploadOVF(url=None, fileFullPath=None):
 
 
 def run_command_in_guest(vm, command, arguments, guestUser, guestPassword, si):
+    """ Permet de lancer une commande via les vmWare tools dans l'OS d'une VM"""
     exitCode = None
     try:
         cmdspec = vim.vm.guest.ProcessManager.ProgramSpec(arguments=arguments, programPath=command)
@@ -286,6 +292,7 @@ def run_command_in_guest(vm, command, arguments, guestUser, guestPassword, si):
 
 
 def list_process_pids_in_guest(vm, proc_name, guestUser, guestPassword, si):
+    """ Permet de lister tous les processus de l'OS d'une VM correspondant à un nom de process """
     pids = []
     try:
         # Credentials used to login to the guest system
@@ -301,6 +308,15 @@ def list_process_pids_in_guest(vm, proc_name, guestUser, guestPassword, si):
 
 
 def kill_process_in_guest(vm, pid, guestUser, guestPassword, si):
+    """
+    Permet de tuer un processus dans l'OS d'une VM
+    :param vm: nom de la VM
+    :param pid: PID du process à tuer
+    :param guestUser: Nom du compte dans l'OS de la VM (doit avoir les droits nécessaires)
+    :param guestPassword: Mot de passe du compte dans l'OS de la VM
+    :param si:
+    :return:
+    """
     try:
         creds = vim.vm.guest.NamePasswordAuthentication(username=guestUser, password=guestPassword)
         si.content.guestOperationsManager.processManager.TerminateProcessInGuest(vm=vm, auth=creds, pid=pid)
@@ -309,9 +325,11 @@ def kill_process_in_guest(vm, pid, guestUser, guestPassword, si):
 
 
 class vmDeploy(object):
+    """ Déploiement d'une VM Tat1 depuis un OVF """
     def __init__(self, ovfpath, name, vcpu, ram, lan, datastore, esx, vmfolder, ep, rds, demandeur, fonction, eol,
                  vcenter, disks, deployer, mtl=None,
                  **kwargs):
+        """ Constructeur """
         self.vm_name = name
         self.ovf_path = ovfpath
         self.ovf_descriptor = get_ovf_descriptor(ovfpath)
@@ -335,6 +353,10 @@ class vmDeploy(object):
         self.deployer = deployer
 
     def _add_disks(self, si):
+        """
+        Ajout des disques à la VM définie par l'objet
+        :param si: service_instance représentant la connexion vcenter
+        """
         for disk in self.disks:
             # print(disk)
             # On déploie le disque de la taille des partitions + la taille des partitions sizées sur la RAM (+5% pour EXT3) + 64 M0 (pour LVM)
@@ -350,6 +372,10 @@ class vmDeploy(object):
             self.add_disk(disk_size=morounded * 100, si=si)
 
     def _connect_switch(self, si):
+        """
+        Connexion aux switchs
+        :param si: service_instance représentant la connexion vcenter
+        """
         new_vm_spec = vim.vm.ConfigSpec()
         # Changement de vSwitch
         vm = self.vm
@@ -376,6 +402,10 @@ class vmDeploy(object):
         tasks.wait_for_tasks(si, [task])
 
     def _correct_cdrom(self, si):
+        """
+        Connexion du cdrom au cdrom du client (pour éviter les problèmes avec des OVF mal faits)
+        :param si: service_instance représentant la connexion vcenter
+        """
         # Rajoute la sélection systématique du CDROM du client (si l'hôte a un CD dans le lecteur tout foire)
         virtual_cdrom_device = None
         for dev in self.vm.config.hardware.device:
@@ -406,14 +436,24 @@ class vmDeploy(object):
         tasks.wait_for_tasks(si, [task])
 
     def resize(self, si, nb_cpu, ram):
+        """
+        Permet de resizer les ressources compute d'une VM
+        :param si: service_instance représentant la connexion vcenter
+        :param nb_cpu: nombre de cpus
+        :param ram: taille de la ram en octets
+        """
         new_vm_spec = vim.vm.ConfigSpec()
-        new_vm_spec.numCPUs = self.nb_cpu
-        new_vm_spec.memoryMB = self.ram // 1024
+        new_vm_spec.numCPUs = nb_cpu
+        new_vm_spec.memoryMB = ram // 1024
         task = self.vm.ReconfigVM_Task(new_vm_spec)
         task.SetTaskDescription(vmodl.LocalizableMessage(key="pyAgora_resize", message="Resizing VM Compute resources"))
         tasks.wait_for_tasks(si, [task])
 
     def _ovf_deploy(self, si):
+        """
+        Déploiement "Basique" de l'OVF, sans métadonnées et autres spécificités Agora
+        :param si:service_instance représentant la connexion vcenter
+        """
         self.ovf_manager = si.content.ovfManager
         ovf_object = self.ovf_manager.ParseDescriptor(self.ovf_descriptor, vim.OvfManager.ParseDescriptorParams())
         self.ovf_lan_name = ovf_object.network[0].name
@@ -476,7 +516,10 @@ class vmDeploy(object):
                 print("Lease error: " + lease.state.error)
                 exit(1)
 
-    def _update_metadata(self, si):
+    def _update_metadata(self):
+        """
+        Mise à jour des attributs de la VM qui vient d'être déployée
+        """
         # TODO Créer une méthode publique pour mettre à jour un ou plusieurs attributs
         # MAJ Attributs vSphere
         self.vm.setCustomValue(key="Admin Systeme", value="POP")
@@ -488,6 +531,11 @@ class vmDeploy(object):
         self.vm.setCustomValue(key="LAN", value=self.wanted_lan_name)
 
     def _update_annotation(self, si):
+        """
+        Mise à jour des annotations de la VM qui vient d'être déployée (Fait en dernier pour signifier la fin du déploiement)
+        :param si: service_instance représentant la connexion vcenter
+        :return:
+        """
         spec = vim.vm.ConfigSpec()
         text = "Déployé par : " + self.deployer
         spec.annotation = self.vm.config.annotation + "\n" + len(text) * '-' + "\n" + text + "\n" + len(text) * '-'
@@ -495,6 +543,10 @@ class vmDeploy(object):
         tasks.wait_for_tasks(si, [task])
 
     def _update_ovf_properties(self, si):
+        """
+        Mise à jour des propriétés OVF utilisées par les scripts TAT1
+        :param si: service_instance représentant la connexion vcenter
+        """
         new_vm_spec = vim.vm.ConfigSpec()
         # MAJ variables OVF
         new_vAppConfig = vim.vApp.VmConfigSpec()
@@ -536,6 +588,11 @@ class vmDeploy(object):
         tasks.wait_for_tasks(si, [task])
 
     def _update_root_pw_on_first_boot(self, newRootPassword, si):
+        """
+        Changement du mot de passe root lors d'un déploiement TAT1
+        :param newRootPassword: nouveau mot de passe root
+        :param si: service_instance représentant la connexion vcenter
+        """
         # Changement du MDP root
         # On attend que le fichier /Agora/build/config/AttenteRootpw soit créé
         while True:
@@ -566,7 +623,7 @@ class vmDeploy(object):
         """
         Permet d'ajouter un disque à une VM
         :param disk_size: Taille du disque en Mo
-        :param si: Service Instance
+        :param si: service_instance représentant la connexion vcenter
         :param disk_type: Si "thin" création en thin provisionning
         Ajout d'un disque à la VM
         """
@@ -607,15 +664,23 @@ class vmDeploy(object):
         self.deployed_disks += 1
 
     def boot(self, si):
-        # Boot de la VM
+        """
+        Boot de la VM
+        :param si: service_instance représentant la connexion vcenter
+        """
         task = self.vm.PowerOn()
         tasks.wait_for_tasks(si, [task])
 
     def deploy(self, si, guestRootPassword='aaaaa'):
+        """
+        Déploiement d'une VM Tat1 étape par étape
+        :param si: service_instance représentant la connexion vcenter
+        :param guestRootPassword: mot de passe root de la VM
+        """
         self.guestRootPassword = guestRootPassword
         self._ovf_deploy(si=si)
         self.resize(nb_cpu=self.nb_cpu, ram=self.ram // 1024, si=si)
-        self._update_metadata(si=si)
+        self._update_metadata()
         self._update_ovf_properties(si=si)
         self._connect_switch(si=si)
         self._add_disks(si=si)
@@ -630,16 +695,32 @@ class vmDeploy(object):
 
     def take_snapshot(self, service_instance, snapshot_name="Snapshot", description=None, dumpMemory=False,
                       quiesce=False):
+        """
+        Prise d'un snapshot de la VM
+        :param service_instance: service_instance représentant la connexion vcenter
+        :param snapshot_name: Nom du snapshot
+        :param description: Description du snapshot
+        :param dumpMemory: Ajout de l'état de la mémoire dans le snapshot ? (défaut : non)
+        :param quiesce: Demander un état figé du système de fichier (quiescence) ? (défaut : non)
+        """
         vm = self.vm
         task = vm.CreateSnapshot(snapshot_name, description, dumpMemory, quiesce)
         tasks.wait_for_tasks(service_instance, [task])
 
     def upgrade_tools(self, si):
+        """
+        Mise à jour des VMware Tools
+        :param si: service_instance représentant la connexion vcenter
+        """
         # MAJ des tools
         task = self.vm.UpgradeTools()
         tasks.wait_for_tasks(si, [task])
 
     def rebootAfterReconfig(self, si):
+        """
+        Reboot à la fin du reconfig (détecté par la présence du fichier /Agora/build/config/code_retour_install)
+        :param si: service_instance représentant la connexion vcenter
+        """
         # On attend la fin du reconfig
         while True:
             try:
