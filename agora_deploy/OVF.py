@@ -19,9 +19,9 @@ import requests
 from pyVim import connect
 from pyVmomi import vim
 from pyVmomi import vmodl
-from tools import tasks
 
 from agora_deploy import FWAP
+from agora_tools import tasks
 
 
 def get_args():

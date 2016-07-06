@@ -10,7 +10,7 @@ from tkinter import ttk
 
 from lxml import etree
 
-import tools.autocombo
+import agora_tools.autocombo
 
 # Correspondance Image DVD/OS
 os = {
@@ -99,7 +99,7 @@ class FwapFile(object):
         :param parent: Element auquel ratacher la combobox
         :return: combobox générée
         """
-        combo = tools.autocombo.AutocompleteCombobox(parent, **kwargs)
+        combo = agora_tools.autocombo.AutocompleteCombobox(parent, **kwargs)
         serverlist = self.get_serverlist()
         if not serverlist is None:
             combo.set_completion_list(serverlist)
