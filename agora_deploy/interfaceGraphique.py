@@ -4,9 +4,10 @@
  Ecrit par Benoit BARTHELEMY
  benoit.barthelemy2@open-groupe.com
 """
+import os
 import sys
 import tkinter as Tk
-from tkinter import ttk
+from tkinter import ttk, filedialog
 
 import pyVmomi
 
@@ -35,6 +36,7 @@ class DeployTat1(object):
 
     def __init__(self, parent, fwapfile=None):
         """Constructeur"""
+        self.user = None
         self.si = None
         self.vcenter = None
         self.eol = None
@@ -56,7 +58,7 @@ class DeployTat1(object):
             self.fwapfile = FWAP.FwapFile(fwapfile)
         else:
             self.fwapfile = FWAP.FwapFile(DEFAULT_FWAP_FILE)
-        self.ovf_path = 'D:\VMs\OVF'
+        self.ovf_path = ''
         self._create_widgets()
 
     def _create_widgets(self):
@@ -158,6 +160,7 @@ class DeployTat1(object):
 
 class AppFrame(ttk.Frame):
     """ superclasse des frames composant l'application """
+
     def __init__(self, app, parent, name):
         self.app = app
         super().__init__(parent, name=name)
@@ -168,6 +171,7 @@ class AppFrame(ttk.Frame):
 
 class LoginMbox(object):
     """ Popup de login vsphere """
+
     # TODO rattacher le popup au meme rootTK
     def __init__(self, caller_frame):
         self.root = Tk.Tk()
@@ -214,14 +218,19 @@ class LoginMbox(object):
 
 class RequestFrame(AppFrame):
     """ Frame initiale contenant les détails de la demande """
+
     def __init__(self, app, parent):
         super().__init__(app=app, parent=parent, name='demande')
 
         label_ovf_path = ttk.Label(self, text="Répertoire racine des OVF")
         label_ovf_path.grid(row=0, column=0, sticky='NESW')
+
         self.ovf_path_entry = ttk.Entry(self, width=60, validate='focusout', validatecommand=self._onRequestValidate)
-        self.ovf_path_entry.insert(0, 'D:\VMs\OVF')
+        self.ovf_path_entry.insert(0, os.path.dirname(sys.argv[0]) + "/OVF")
         self.ovf_path_entry.grid(row=0, column=1, columnspan=3, sticky='NESW')
+
+        self.ovf_path_helper = ttk.Button(master=self, text="...", command=self._ovf_select)
+        self.ovf_path_helper.grid(row=0, column=4, sticky='W')
 
         label_fwap_path = ttk.Label(self, text="URL du FWAP")
         label_fwap_path.grid(row=1, column=0, sticky='E')
@@ -277,6 +286,13 @@ class RequestFrame(AppFrame):
         self.boutonPopupVC = ttk.Button(self, text="Login vCenter", command=self._onVcPopup)
         self.boutonPopupVC.grid(row=10, column=0, columnspan=4, sticky='NSEW', pady=5)
         self.grid(row=0, column=0)
+
+    def _ovf_select(self):
+        """ Parmet de mettre à jour l'emplacement des OVF """
+        path = filedialog.askdirectory(parent=self, title="Choissiez le répertoire contenant les OVF", mustexist=True)
+        self.ovf_path_entry.delete(0, 'end')
+        self.ovf_path_entry.insert(0, path)
+        self._onRequestValidate()
 
     def vcLoginOK(self):
         """ mise à jour de l'interface une fois connecté au vCenter"""
