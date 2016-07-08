@@ -4,7 +4,6 @@
  Ecrit par Benoit BARTHELEMY
  benoit.barthelemy2@open-groupe.com
 """
-import os
 import sys
 import tkinter as Tk
 from tkinter import ttk, filedialog
@@ -227,7 +226,7 @@ class RequestFrame(AppFrame):
         label_ovf_path.grid(row=0, column=0, sticky='NESW')
 
         self.ovf_path_entry = ttk.Entry(self, width=60, validate='focusout', validatecommand=self._onRequestValidate)
-        self.ovf_path_entry.insert(0, os.path.dirname(sys.argv[0]) + os.sep + "OVF")
+        self.ovf_path_entry.insert(0, "")
         self.ovf_path_entry.grid(row=0, column=1, columnspan=3, sticky='NESW')
 
         self.ovf_path_helper = ttk.Button(master=self, text="...", command=self._ovf_select)

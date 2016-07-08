@@ -24,6 +24,7 @@ from agora_deploy import FWAP
 from agora_tools import tasks
 
 
+# todo Ajouter une fonction qui a partir d'un folder donne tout son path en string
 def get_args():
     """
     Récuépration des informations de la ligne de commande
