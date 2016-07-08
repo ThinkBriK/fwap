@@ -679,7 +679,7 @@ class vmDeploy(object):
         """
         self.guestRootPassword = guestRootPassword
         self._ovf_deploy(si=si)
-        self.resize(nb_cpu=self.nb_cpu, ram=self.ram // 1024, si=si)
+        self.resize(nb_cpu=self.nb_cpu, ram=self.ram, si=si)
         self._update_metadata()
         self._update_ovf_properties(si=si)
         self._connect_switch(si=si)
