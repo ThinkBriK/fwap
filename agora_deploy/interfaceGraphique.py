@@ -125,6 +125,7 @@ class DeployTat1(object):
 
     def _onDeploy(self):
         """Appel du déploiement effectif de la VM"""
+        self.validate()
         deployment = OVF.vmDeploy(
             ovfpath=self.ovf_path + '\\' + OS_OVF.get(self.serverinfo.os),
             name=self.serverinfo.servername,
@@ -226,7 +227,7 @@ class RequestFrame(AppFrame):
         label_ovf_path.grid(row=0, column=0, sticky='NESW')
 
         self.ovf_path_entry = ttk.Entry(self, width=60, validate='focusout', validatecommand=self._onRequestValidate)
-        self.ovf_path_entry.insert(0, os.path.dirname(sys.argv[0]) + "/OVF")
+        self.ovf_path_entry.insert(0, os.path.dirname(sys.argv[0]) + os.sep + "OVF")
         self.ovf_path_entry.grid(row=0, column=1, columnspan=3, sticky='NESW')
 
         self.ovf_path_helper = ttk.Button(master=self, text="...", command=self._ovf_select)
