@@ -158,6 +158,7 @@ class DeployTat1(object):
 
 class AppFrame(ttk.Frame):
     """ superclasse des frames composant l'application """
+
     def __init__(self, app, parent, name):
         self.app = app
         super().__init__(parent, name=name)
@@ -168,6 +169,7 @@ class AppFrame(ttk.Frame):
 
 class LoginMbox(object):
     """ Popup de login vsphere """
+
     # TODO rattacher le popup au meme rootTK
     def __init__(self, caller_frame):
         self.root = Tk.Tk()
@@ -214,11 +216,13 @@ class LoginMbox(object):
 
 class RequestFrame(AppFrame):
     """ Frame initiale contenant les détails de la demande """
+
     def __init__(self, app, parent):
         super().__init__(app=app, parent=parent, name='demande')
 
         label_ovf_path = ttk.Label(self, text="Répertoire racine des OVF")
         label_ovf_path.grid(row=0, column=0, sticky='NESW')
+
         self.ovf_path_entry = ttk.Entry(self, width=60, validate='focusout', validatecommand=self._onRequestValidate)
         self.ovf_path_entry.insert(0, 'D:\VMs\OVF')
         self.ovf_path_entry.grid(row=0, column=1, columnspan=3, sticky='NESW')
