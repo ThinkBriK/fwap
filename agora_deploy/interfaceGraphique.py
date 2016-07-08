@@ -4,6 +4,7 @@
  Ecrit par Benoit BARTHELEMY
  benoit.barthelemy2@open-groupe.com
 """
+import os
 import sys
 import tkinter as Tk
 from tkinter import ttk, filedialog
