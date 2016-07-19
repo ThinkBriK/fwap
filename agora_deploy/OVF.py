@@ -690,8 +690,8 @@ class vmDeploy(object):
                            description="Snapshot automatique avant premier boot")
         self.boot(si=si)
         self._update_root_pw_on_first_boot(newRootPassword=self.guestRootPassword, si=si)
-        self.upgrade_tools(si=si)
         self.rebootAfterReconfig(si=si)
+        self.upgrade_tools(si=si)
         self._update_annotation(si=si)
 
     def take_snapshot(self, service_instance, snapshot_name="Snapshot", description=None, dumpMemory=False,
@@ -760,7 +760,8 @@ def main():
                           fonction="tests déploiement",
                           eol="Temporaire",
                           vcenter="a82avce02.agora.msanet",
-                          disks=disks)
+                          disks=disks,
+                          deployer='c82nbar')
     si = connect_vcenter(vcenter='a82avce02.agora.msanet', user='c82nbar', password='W--Vrtw2016-1')
     res = deployment.deploy(si)
 

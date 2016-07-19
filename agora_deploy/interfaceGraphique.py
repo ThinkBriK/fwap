@@ -127,7 +127,7 @@ class DeployTat1(object):
         """Appel du déploiement effectif de la VM"""
         self.validate()
         deployment = OVF.vmDeploy(
-            ovfpath=self.ovf_path + '\\' + OS_OVF.get(self.serverinfo.os),
+            ovfpath=self.ovf_path + os.sep + OS_OVF.get(self.serverinfo.os),
             name=self.serverinfo.servername,
             vcpu=int(self.vcpus),
             ram=int(self.ram) * 1024 * 1024,
@@ -267,7 +267,7 @@ class RequestFrame(AppFrame):
         self.eol_entry.grid(row=6, column=1, columnspan=3, sticky='NSEW')
 
         sep2 = ttk.Separator(self, orient='horizontal')
-        sep2.grid(row=7, column=0, columnspan=5, sticky='NSEW', padx=2, pady=2)
+        sep2.grid(row=7, column=0, columnspan=4, sticky='NSEW', padx=2, pady=2)
 
         label_vcpu = ttk.Label(self, text="vCPUs")
         label_vcpu.grid(row=8, column=0, sticky='E')
@@ -418,7 +418,7 @@ class RequestFrame(AppFrame):
 
         # Ajout d'un séparateur
         separator = ttk.Separator(frame, orient='horizontal')
-        separator.grid(row=2, column=0, columnspan=4, sticky='NSEW', pady=6)
+        separator.grid(row=2, column=0, columnspan=3, sticky='NSEW', pady=6)
 
         # Récupération des LAN accessibles depuis l'hôte
         lan_label = ttk.Label(frame, text="Choisissez le réseau")
