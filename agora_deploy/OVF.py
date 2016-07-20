@@ -279,15 +279,22 @@ def run_command_in_guest(vm, command, arguments, guestUser, guestPassword, si):
         # pid de la commande
 
         pid = si.content.guestOperationsManager.processManager.StartProgramInGuest(vm=vm, auth=creds, spec=cmdspec)
+    except vim.fault.GuestComponentsOutOfDate as e:
+        print(e.msg)
+    except vim.fault.InvalidGuestLogin:
+        print('Login OS incorrect')
+        return 1
 
-        # Code Retour
-        while exitCode is None:
+    # Code Retour
+    while exitCode is None:
+        try:
             exitCode = \
                 si.content.guestOperationsManager.processManager.ListProcessesInGuest(vm=vm, auth=creds, pids=pid)[
                     0].exitCode
-            sleep(1)
-    except vim.fault.GuestComponentsOutOfDate as e:
-        print(e.msg)
+        # Si on ne peut plus se logger c'est que le MDP root a été changé
+        except vim.fault.InvalidGuestLogin:
+            exitCode = 0
+        sleep(1)
 
     return exitCode
 
@@ -541,6 +548,8 @@ class vmDeploy(object):
         text = "Déployé par : " + self.deployer
         spec.annotation = self.vm.config.annotation + "\n" + len(text) * '-' + "\n" + text + "\n" + len(text) * '-'
         task = self.vm.ReconfigVM_Task(spec)
+        task.SetTaskDescription(
+            vmodl.LocalizableMessage(key="pyAgora_setdeployer", message="Updating Deployer Name (End of deployment)"))
         tasks.wait_for_tasks(si, [task])
 
     def _update_ovf_properties(self, si):
@@ -620,6 +629,7 @@ class vmDeploy(object):
             sleep(1)
             pids = list_process_pids_in_guest(vm=self.vm, proc_name='dialog', guestUser='root', guestPassword='', si=si)
 
+
     def add_disk(self, disk_size, si, disk_type=''):
         """
         Permet d'ajouter un disque à une VM
@@ -690,8 +700,8 @@ class vmDeploy(object):
                            description="Snapshot automatique avant premier boot")
         self.boot(si=si)
         self._update_root_pw_on_first_boot(newRootPassword=self.guestRootPassword, si=si)
-        self.rebootAfterReconfig(si=si)
         self.upgrade_tools(si=si)
+        self.rebootAfterReconfig(si=si)
         self._update_annotation(si=si)
 
     def take_snapshot(self, service_instance, snapshot_name="Snapshot", description=None, dumpMemory=False,

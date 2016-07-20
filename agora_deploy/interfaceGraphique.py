@@ -248,7 +248,7 @@ class RequestFrame(AppFrame):
         self.servCombo.bind("<<ComboboxSelected>>", self._onRequestValidate)
 
         sep1 = ttk.Separator(self, orient='horizontal')
-        sep1.grid(row=3, column=0, columnspan=5, sticky='NSEW', padx=2, pady=2)
+        sep1.grid(row=3, column=0, columnspan=4, sticky='NSEW', padx=2, pady=2)
 
         label_demandeur = ttk.Label(self, text="Demandeur")
         label_demandeur.grid(row=4, column=0, sticky='E')
