@@ -478,12 +478,12 @@ class vmDeploy(object):
         # On prépare la configuration de l'import à partir des arguments
         objs = {}
         objs['datastore'] = get_obj(content=si.content, vimtype=vim.Datastore, name=self.datastore_name)
+        objs['resource pool'] = chosen_host.parent.resourcePool
         if type(chosen_host.parent) == vim.ClusterComputeResource:
             objs['cluster'] = chosen_host.parent
-            objs['resource pool'] = chosen_host.parent.resourcePool
+
         else:
             objs['cluster'] = None
-            objs['resource pool'] = None
 
         # On crée l'objet représentant l'import : import_spec
         import_spec = self.ovf_manager.CreateImportSpec(self.ovf_descriptor,
